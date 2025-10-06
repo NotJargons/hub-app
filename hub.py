@@ -109,9 +109,14 @@ st.markdown("""
 # Authentication function
 def check_login(username, password):
     """Check user credentials and return role"""
-    if username == "emmanuel.imafidon" and password == "Developer8723":
+    admin_user = st.secrets["ADMIN_USER"]
+    admin_pass = st.secrets["ADMIN_PASS"]
+    user_user = st.secrets["USER_USER"]
+    user_pass = st.secrets["USER_PASS"]
+
+    if username == admin_user and password == admin_pass:
         return "admin"
-    elif username == "itcare" and password == "Holiday2867++":
+    elif username == user_user and password == user_pass:
         return "user"
     return None
 
