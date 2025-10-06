@@ -214,22 +214,22 @@ else:
         cols = {c.strip().lower(): c for c in hr_df.columns}
         if "staff id" in cols and "surname" in cols:
             hr_df = hr_df.rename(columns={
-                cols["staff id"]: "STAFF ID",
+                cols["staff id", "employee id"]: "STAFF ID",
                 cols["first name"]: "FIRST NAME",
                 cols["surname"]: "SURNAME",
                 cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER"): "PHONE NUMBER",
+                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
                 cols.get("role", "ROLE"): "ROLE",
-                cols.get("sol id", "SOL ID"): "SOL ID",
+                cols.get("sol id", "SOL ID", "work address sol id"): "SOL ID",
                 cols.get("department", "DEPARTMENT"): "DEPARTMENT"
             })
         elif "staff id" in cols and "last name" in cols:
             hr_df = hr_df.rename(columns={
-                cols["staff id"]: "STAFF ID",
+                cols["staff id", "employee id"]: "STAFF ID",
                 cols["first name"]: "FIRST NAME",
                 cols["last name"]: "SURNAME",
                 cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER"): "PHONE NUMBER",
+                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
                 cols.get("job role", "ROLE"): "ROLE",
                 cols.get("work address sol id", "SOL ID"): "SOL ID",
                 cols.get("department", "DEPARTMENT"): "DEPARTMENT"
