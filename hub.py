@@ -209,39 +209,41 @@ else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
-    def normalize_hr_file(hr_df):
-        """Normalize HR file column names"""
-        cols = {c.strip().lower(): c for c in hr_df.columns}
-        if "staff id" in cols and "surname" in cols:
-            hr_df = hr_df.rename(columns={
-                cols["staff id", "employee id"]: "STAFF ID",
-                cols["first name"]: "FIRST NAME",
-                cols["surname"]: "SURNAME",
-                cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
-                cols.get("role", "ROLE"): "ROLE",
-                cols.get("sol id", "SOL ID", "work address sol id"): "SOL ID",
-                cols.get("department", "DEPARTMENT"): "DEPARTMENT"
-            })
-        elif "staff id" in cols and "last name" in cols:
-            hr_df = hr_df.rename(columns={
-                cols["staff id", "employee id"]: "STAFF ID",
-                cols["first name"]: "FIRST NAME",
-                cols["last name"]: "SURNAME",
-                cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
-                cols.get("job role", "ROLE"): "ROLE",
-                cols.get("work address sol id", "SOL ID"): "SOL ID",
-                cols.get("department", "DEPARTMENT"): "DEPARTMENT"
-            })
-        else:
-            raise ValueError("❌ Unrecognized HR file format. Columns available: " + str(hr_df.columns.tolist()))
+       # ✅ Corrected normalize_hr_file
+    def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize HR file column names — handles variations automatically"""
+        column_map = {
+            "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
+            "first name": ["first name", "firstname", "emp first name", "given name"],
+            "surname": ["surname", "last name", "lastname", "family name"],
+            "middle name": ["middle name", "middlename", "other name"],
+            "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
+            "role": ["role", "job role", "position", "designation", "job title"],
+            "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
+            "department": ["department", "dept", "unit", "division"]
+        }
+
+        df = hr_df.copy()
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        rename_map = {}
+        for standard, variants in column_map.items():
+            for v in variants:
+                match = [c for c in df.columns if c == v]
+                if match:
+                    rename_map[match[0]] = standard.upper()
+                    break
+
+        df = df.rename(columns=rename_map)
+
         expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
                          "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
+
         for col in expected_cols:
-            if col not in hr_df.columns:
-                hr_df[col] = ""
-        return hr_df[expected_cols]
+            if col not in df.columns:
+                df[col] = ""
+
+        return df[expected_cols]
 
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
