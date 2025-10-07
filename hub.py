@@ -209,7 +209,7 @@ else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
-    def normalize_hr_file(hr_df):
+    def normalize_hr_file(hr_df):{}
     """Normalize HR file column names to a standard format."""
     # Lowercase and strip spaces from columns for easy matching
     normalized_cols = {c.strip().lower(): c for c in hr_df.columns}
