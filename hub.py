@@ -210,38 +210,52 @@ else:
 
     # AD Bulk Creator Functions
     def normalize_hr_file(hr_df):
-        """Normalize HR file column names"""
-        cols = {c.strip().lower(): c for c in hr_df.columns}
-        if "staff id" in cols and "surname" in cols:
-            hr_df = hr_df.rename(columns={
-                cols["staff id", "employee id"]: "STAFF ID",
-                cols["first name"]: "FIRST NAME",
-                cols["surname"]: "SURNAME",
-                cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
-                cols.get("role", "ROLE"): "ROLE",
-                cols.get("sol id", "SOL ID", "work address sol id"): "SOL ID",
-                cols.get("department", "DEPARTMENT"): "DEPARTMENT"
-            })
-        elif "staff id" in cols and "last name" in cols:
-            hr_df = hr_df.rename(columns={
-                cols["staff id", "employee id"]: "STAFF ID",
-                cols["first name"]: "FIRST NAME",
-                cols["last name"]: "SURNAME",
-                cols.get("middle name", "MIDDLE NAME"): "MIDDLE NAME",
-                cols.get("phone number", "PHONE NUMBER", "phone", "PHONE", "number"): "PHONE NUMBER",
-                cols.get("job role", "ROLE"): "ROLE",
-                cols.get("work address sol id", "SOL ID"): "SOL ID",
-                cols.get("department", "DEPARTMENT"): "DEPARTMENT"
-            })
-        else:
-            raise ValueError("❌ Unrecognized HR file format. Columns available: " + str(hr_df.columns.tolist()))
-        expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
-                         "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
-        for col in expected_cols:
-            if col not in hr_df.columns:
-                hr_df[col] = ""
-        return hr_df[expected_cols]
+    """Normalize HR file column names to a standard format."""
+    # Lowercase and strip spaces from columns for easy matching
+    normalized_cols = {c.strip().lower(): c for c in hr_df.columns}
+
+    # Define all possible synonyms for expected columns
+    possible_names = {
+        "STAFF ID": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "id"],
+        "FIRST NAME": ["first name", "firstname", "given name", "emp first name"],
+        "SURNAME": ["surname", "last name", "lastname", "family name"],
+        "MIDDLE NAME": ["middle name", "middlename", "other name"],
+        "PHONE NUMBER": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
+        "ROLE": ["role", "job role", "position", "designation", "job title"],
+        "SOL ID": ["sol id", "work address sol id", "branch code", "sol", "location id"],
+        "DEPARTMENT": ["department", "dept", "unit", "division"]
+    }
+
+    # Initialize mapping dictionary
+    rename_map = {}
+
+    # Try to find best match for each expected column
+    for standard, variants in possible_names.items():
+        for var in variants:
+            if var in normalized_cols:
+                rename_map[normalized_cols[var]] = standard
+                break  # stop at first match
+
+    # Check if we found at least STAFF ID and a name column
+    if "STAFF ID" not in rename_map or ("SURNAME" not in rename_map and "FIRST NAME" not in rename_map):
+        raise ValueError(
+            f"❌ Unrecognized HR file format. Columns found: {list(hr_df.columns)}"
+        )
+
+    # Rename columns
+    hr_df = hr_df.rename(columns=rename_map)
+
+    # Ensure all expected columns exist (fill missing with blank)
+    expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
+                     "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
+    for col in expected_cols:
+        if col not in hr_df.columns:
+            hr_df[col] = ""
+
+    # Reorder columns
+    hr_df = hr_df[expected_cols]
+
+    return hr_df
 
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
