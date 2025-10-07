@@ -210,7 +210,7 @@ else:
 
     # AD Bulk Creator Functions
 
-    def normalize_hr_file(hr_df):
+  def normalize_hr_file(hr_df):
     """Normalize HR file column names (handles variations automatically)."""
 
     # Normalize all column names to lowercase (for easier matching)
