@@ -244,8 +244,6 @@ def normalize_hr_file(hr_df):
                 hr_df[col] = ""
         return hr_df[expected_cols]
 
-
-
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
     def normalize_name(name: str, case="title"):
