@@ -277,26 +277,6 @@ else:
         # Add single quote prefix to preserve + in Excel
         return f"{formatted}"
 
-def format_job_title(role_val):
-    """Add comma after job title prefix if needed"""
-    role = str(role_val).strip()
-    if not role or role.lower() == "nan":
-        return "N/A"
-    
-    title_prefixes = [
-        "Team Member", "Team Lead", "Head", "Manager", "Officer", 
-        "Assistant Officer", "Senior Officer", "Principal Officer",
-        "Deputy Manager", "Assistant Manager", "Senior Manager",
-        "Chief Officer", "Group Head", "Deputy Head"
-    ]
-    
-    for prefix in title_prefixes:
-        if role.startswith(prefix) and len(role) > len(prefix):
-            if not role[len(prefix):].startswith(","):
-                return f"{prefix}, {role[len(prefix):].strip()}"
-    
-    return proper_case(role)
-
 def clean_department(dept_val, role_val):
     if str(role_val).strip().lower()=="direct sales executive": return "Marketing"
     dept = proper_case(dept_val)
@@ -419,7 +399,7 @@ def clean_department(dept_val, role_val):
                                     skipped.append({"Staff ID": staff_id, "Reason": "Missing both FIRST NAME and MIDDLE NAME"})
                                     continue
                                 
-                                role = format_job_title(row["ROLE"])
+                                role = proper_case(row["ROLE"])
                                 department = clean_department(row.get("DEPARTMENT",""), role)
                                 sol_id = clean_sol(row["SOL ID"])
                                 phone = format_phone(row["PHONE NUMBER"])  # Excel-friendly format
