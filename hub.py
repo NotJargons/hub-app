@@ -247,22 +247,7 @@ def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
 
-    # Step 5: Auto-insert commas in ROLE where job titles and units are joined
-    if "ROLE" in df.columns:
-        role_prefixes = [
-            "Team Member", "Team Lead", "Head", "Manager",
-            "Officer", "Assistant Officer", "Senior Officer",
-            "Principal Officer", "Deputy Manager", "Assistant Manager"
-        ]
-
-        def fix_role(title):
-            title = str(title).strip()
-            for prefix in role_prefixes:
-                if title.startswith(prefix + " ") and f"{prefix}," not in title:
-                    return title.replace(prefix + " ", prefix + ", ", 1)
-            return title
-
-        df["ROLE"] = df["ROLE"].apply(fix_role)
+  ##
 
     # Step 6: Return standardized DataFrame
     return df[expected_cols]
