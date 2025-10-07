@@ -209,63 +209,59 @@ else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
-    def normalize_hr_file(hr_df):{}
-    """Normalize HR file column names to a standard format."""
-    # Lowercase and strip spaces from columns for easy matching
-    normalized_cols = {c.strip().lower(): c for c in hr_df.columns}
 
-    # Define all possible synonyms for expected columns
-    possible_names = {
-        "STAFF ID": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "id"],
-        "FIRST NAME": ["first name", "firstname", "given name", "emp first name"],
-        "SURNAME": ["surname", "last name", "lastname", "family name"],
-        "MIDDLE NAME": ["middle name", "middlename", "other name"],
-        "PHONE NUMBER": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
-        "ROLE": ["role", "job role", "position", "designation", "job title"],
-        "SOL ID": ["sol id", "work address sol id", "branch code", "sol", "location id"],
-        "DEPARTMENT": ["department", "dept", "unit", "division"]
+    def normalize_hr_file(hr_df):
+    """Normalize HR file column names (handles variations automatically)."""
+
+    # Normalize all column names to lowercase (for easier matching)
+    cols = {c.strip().lower(): c for c in hr_df.columns}
+
+    # Define acceptable variants for each target column
+    variants = {
+        "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
+        "first name": ["first name", "firstname", "emp first name", "given name"],
+        "surname": ["surname", "last name", "lastname", "family name"],
+        "middle name": ["middle name", "middlename", "other name"],
+        "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
+        "role": ["role", "job role", "position", "designation", "job title"],
+        "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
+        "department": ["department", "dept", "unit", "division"]
     }
 
-    # Initialize mapping dictionary
+    # Helper to find the actual column name for any variant
+    def find_col(possible_names):
+        for name in possible_names:
+            if name in cols:
+                return cols[name]
+        return None
+
+    # Build rename mapping based on what’s present in hr_df
     rename_map = {}
+    for target, names in variants.items():
+        actual = find_col(names)
+        if actual:
+            rename_map[actual] = target.upper()
 
-    # Try to find best match for each expected column
-    for standard, variants in possible_names.items():
-        for var in variants:
-            if var in normalized_cols:
-                rename_map[normalized_cols[var]] = standard
-                break  # stop at first match
+    # Check if file has the minimum required identifiers
+    if ("staff id" not in rename_map and "surname" not in rename_map
+        and "last name" not in cols):
+        raise ValueError("❌ Unrecognized HR file format. Columns available: " + str(hr_df.columns.tolist()))
 
-    # Check if we found at least STAFF ID and a name column
-    if "STAFF ID" not in rename_map or ("SURNAME" not in rename_map and "FIRST NAME" not in rename_map):
-        raise ValueError(
-            f"❌ Unrecognized HR file format. Columns found: {list(hr_df.columns)}"
-        )
-
-    # Rename columns
+    # Rename using our mapping
     hr_df = hr_df.rename(columns=rename_map)
 
-    # Ensure all expected columns exist (fill missing with blank)
-   # expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
-                 #    "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
-    #for col in expected_cols:
-        #if col not in hr_df.columns:
-           # 3hr_df[col] = ""
-
-    # Reorder columns
-    #hr_df = hr_df[expected_cols]
-
-    #return hr_df 
-
+    # Ensure all expected columns exist
     expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
                      "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
     for col in expected_cols:
         if col not in hr_df.columns:
             hr_df[col] = ""
 
+    # Reorder for consistency
     hr_df = hr_df[expected_cols]
 
-    return hr_df 
+    return hr_df
+
 
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
