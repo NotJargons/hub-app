@@ -277,6 +277,31 @@ else:
         # Add single quote prefix to preserve + in Excel
         return f"{formatted}"
 
+def format_job_title(role_val):
+    """Add comma after job title prefix if needed"""
+    role = str(role_val).strip()
+    if not role or role.lower() == "nan":
+        return "N/A"
+    
+    title_prefixes = [
+        "Team Member", "Team Lead", "Head", "Manager", "Officer", 
+        "Assistant Officer", "Senior Officer", "Principal Officer",
+        "Deputy Manager", "Assistant Manager", "Senior Manager",
+        "Chief Officer", "Group Head", "Deputy Head"
+    ]
+    
+    for prefix in title_prefixes:
+        if role.startswith(prefix) and len(role) > len(prefix):
+            if not role[len(prefix):].startswith(","):
+                return f"{prefix}, {role[len(prefix):].strip()}"
+    
+    return proper_case(role)
+
+def clean_department(dept_val, role_val):
+    if str(role_val).strip().lower()=="direct sales executive": return "Marketing"
+    dept = proper_case(dept_val)
+    return dept if dept!="N/A" else proper_case(role_val)
+    
     def clean_department(dept_val, role_val):
         if str(role_val).strip().lower()=="direct sales executive": return "Marketing"
         dept = proper_case(dept_val)
@@ -394,7 +419,7 @@ else:
                                     skipped.append({"Staff ID": staff_id, "Reason": "Missing both FIRST NAME and MIDDLE NAME"})
                                     continue
                                 
-                                role = proper_case(row["ROLE"])
+                                role = format_job_title(row["ROLE"])
                                 department = clean_department(row.get("DEPARTMENT",""), role)
                                 sol_id = clean_sol(row["SOL ID"])
                                 phone = format_phone(row["PHONE NUMBER"])  # Excel-friendly format
@@ -538,7 +563,9 @@ else:
                     # HTML report
                     html_content = "<html><body>"
                     if st.session_state['ad_output']:
-                        html_content += "<p><b>Users have been created as:</b></p>"
+                        user_count = len(st.session_state['ad_output'])
+                        user_word = "user has" if user_count == 1 else "users have"
+                        html_content += f"<p><b>{user_count} {user_word} been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
                         for user in st.session_state['ad_output']:
@@ -548,7 +575,9 @@ else:
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
                     
                     if st.session_state['ad_skipped']:
-                        html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
+                        skipped_count = len(st.session_state['ad_skipped'])
+                        skipped_word = "user was" if skipped_count == 1 else "users were"
+                        html_content += f"<p><b>However, the below {skipped_word} not created due to errors below:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
                         for s in st.session_state['ad_skipped']:
