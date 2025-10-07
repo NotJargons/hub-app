@@ -208,7 +208,6 @@ else:
         else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
-    # ✅ Corrected normalize_hr_file
 def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
     """Normalize HR file column names — handles variations automatically"""
 
@@ -247,7 +246,8 @@ def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
 
- if "ROLE" in df.columns:
+    # Step 5: Fix role names (add commas after known prefixes)
+    if "ROLE" in df.columns:
         role_prefixes = [
             "Team Member", "Team Lead", "Head", "Manager",
             "Officer", "Assistant Officer", "Senior Officer",
