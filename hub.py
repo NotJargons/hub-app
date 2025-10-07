@@ -208,63 +208,42 @@ else:
         else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
-def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize HR file column names — handles variations automatically"""
+    # AD Bulk Creator Functions
+       # ✅ Corrected normalize_hr_file
+    def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize HR file column names — handles variations automatically"""
+        column_map = {
+            "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
+            "first name": ["first name", "firstname", "emp first name", "given name"],
+            "surname": ["surname", "last name", "lastname", "family name"],
+            "middle name": ["middle name", "middlename", "other name"],
+            "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
+            "role": ["role", "job role", "position", "designation", "job title"],
+            "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
+            "department": ["department", "dept", "unit", "division"]
+        }
 
-    # Step 1: Known column name variants
-    column_map = {
-        "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
-        "first name": ["first name", "firstname", "emp first name", "given name"],
-        "surname": ["surname", "last name", "lastname", "family name"],
-        "middle name": ["middle name", "middlename", "other name"],
-        "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
-        "role": ["role", "job role", "position", "designation", "job title"],
-        "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
-        "department": ["department", "dept", "unit", "division"]
-    }
+        df = hr_df.copy()
+        df.columns = [c.strip().lower() for c in df.columns]
 
-    # Step 2: Standardize column names
-    df = hr_df.copy()
-    df.columns = [c.strip().lower() for c in df.columns]
+        rename_map = {}
+        for standard, variants in column_map.items():
+            for v in variants:
+                match = [c for c in df.columns if c == v]
+                if match:
+                    rename_map[match[0]] = standard.upper()
+                    break
 
-    # Step 3: Detect and rename columns
-    rename_map = {}
-    for standard, variants in column_map.items():
-        for v in variants:
-            match = [c for c in df.columns if c == v]
-            if match:
-                rename_map[match[0]] = standard.upper()
-                break
-    df = df.rename(columns=rename_map)
+        df = df.rename(columns=rename_map)
 
-    # Step 4: Ensure all expected columns exist
-    expected_cols = [
-        "STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
-        "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"
-    ]
-    for col in expected_cols:
-        if col not in df.columns:
-            df[col] = ""
+        expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
+                         "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
 
-    # Step 5: Fix role names (add commas after known prefixes)
-    if "ROLE" in df.columns:
-        role_prefixes = [
-            "Team Member", "Team Lead", "Head", "Manager",
-            "Officer", "Assistant Officer", "Senior Officer",
-            "Principal Officer", "Deputy Manager", "Assistant Manager"
-        ]
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = ""
 
-        def fix_role(title):
-            title = str(title).strip()
-            for prefix in role_prefixes:
-                if title.startswith(prefix + " ") and f"{prefix}," not in title:
-                    return title.replace(prefix + " ", prefix + ", ", 1)
-            return title
-
-        df["ROLE"] = df["ROLE"].apply(fix_role)
-
-    # Step 6: Return standardized DataFrame
-    return df[expected_cols]
+        return df[expected_cols]
 
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
