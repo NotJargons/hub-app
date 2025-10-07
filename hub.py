@@ -246,16 +246,26 @@ else:
     hr_df = hr_df.rename(columns=rename_map)
 
     # Ensure all expected columns exist (fill missing with blank)
+   # expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
+                 #    "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
+    #for col in expected_cols:
+        #if col not in hr_df.columns:
+           # 3hr_df[col] = ""
+
+    # Reorder columns
+    #hr_df = hr_df[expected_cols]
+
+    #return hr_df 
+
     expected_cols = ["STAFF ID", "FIRST NAME", "SURNAME", "MIDDLE NAME",
                      "PHONE NUMBER", "ROLE", "SOL ID", "DEPARTMENT"]
     for col in expected_cols:
         if col not in hr_df.columns:
             hr_df[col] = ""
 
-    # Reorder columns
     hr_df = hr_df[expected_cols]
 
-    return hr_df
+    return hr_df 
 
     ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
