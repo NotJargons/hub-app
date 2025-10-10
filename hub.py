@@ -579,7 +579,7 @@ else:
                                 staff = staff.iloc[0]
                                 html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
                         html_content += "</table>"
-                        html_content += "<p>Please review the above errors and revert.</p>"
+                        html_content += "<p>Please review the above error and revert.</p>"
                     
                     html_content += "</body></html>"
                     
