@@ -537,7 +537,7 @@ else:
                 if st.session_state['ad_output'] or st.session_state['ad_skipped']:
                     # HTML report
                     html_content = "<html><body>"
-                    if st.session_state['ad_output']:
+                    if len (st.session_state['ad_output']) > 1:
                         html_content += "<p><b>Users have been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
@@ -546,9 +546,31 @@ else:
                             html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
                         html_content += "</table>"
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
+
+                    else:
+                        html_content += "<p><b>User has been created as:</b></p>"
+                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
+                        for user in st.session_state['ad_output']:
+                            email = f"{user['userPrincipalName']}@ubagroup.com"
+                            html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
+                        html_content += "</table>"
+                        html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
                     
-                    if st.session_state['ad_skipped']:
+                    if len (st.session_state['ad_skipped']) > 1:
                         html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
+                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
+                        for s in st.session_state['ad_skipped']:
+                            staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
+                            if not staff.empty:
+                                staff = staff.iloc[0]
+                                html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
+                        html_content += "</table>"
+                        html_content += "<p>Please review the above errors and revert.</p>"
+
+                    else:
+                        html_content += "<p><b>However, the below user was not created due to error below:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
                         for s in st.session_state['ad_skipped']:
