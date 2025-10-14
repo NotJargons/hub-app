@@ -204,12 +204,11 @@ else:
         st.markdown("---")
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
-        st.info("Creates Active Directory users from HR Excel files.")
-        elif "UBACS" in selected_tool:
-        st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
-        else:
-        st.info("Converts EXIT Notification to Proper Excel Format")
-
+    st.info("Creates Active Directory users from HR Excel files.")
+elif "UBACS" in selected_tool:
+    st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
+else:
+    st.info("Converts EXIT Notification to Proper Excel Format")
 
     # AD Bulk Creator Functions
        # ✅ Corrected normalize_hr_file
