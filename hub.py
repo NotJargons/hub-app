@@ -197,7 +197,7 @@ else:
         st.markdown("### 🔧 Tool Selection")
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator", "Exit File Converter"],
             index=0
         )
         
@@ -205,8 +205,10 @@ else:
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
             st.info("Creates Active Directory users from HR Excel files.")
-        else:
+        elif:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
+        else:
+            st.info("Converts EXIT Notification to Proper Excel Format")
 
     # AD Bulk Creator Functions
        # ✅ Corrected normalize_hr_file
@@ -595,7 +597,7 @@ else:
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
-    else:  # GRP Script Generator
+    elif:  # GRP Script Generator
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
@@ -706,6 +708,127 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
+        else:
+        st.markdown('<div class="grp-card"><h2>🗄️ Exit File Converter</h2></div>', unsafe_allow_html=True)
+
+
+# ======================
+# Utility Functions
+# ======================
+
+def clean_solid(v):
+    """Ensure SolID is always text and starts with 0 if it looks numeric."""
+    if pd.isna(v) or v == "":
+        return ""
+    s = str(v).strip()
+    s = re.sub(r"\D", "", s)
+    if not s.startswith("0") and s != "":
+        s = "0" + s
+    return s
+
+# ======================
+# Streamlit App
+# ======================
+
+st.title("Exit File Converter ⚡")
+st.write("Upload an exit portal Excel/CSV file and download it in the required template format.")
+
+uploaded_file = st.file_uploader("Upload Exit File", type=["xlsx", "xls", "csv"])
+
+if uploaded_file:
+    # Read file normally (not forcing dtype=str, so we can handle numbers properly)
+    if uploaded_file.name.lower().endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    else:
+        df = pd.read_excel(uploaded_file)
+
+    # ======================
+    # Pre-process Mobile Phone BEFORE mapping
+    # ======================
+    if "Mobile Phone" in df.columns:
+        df["Mobile Phone"] = (
+            pd.to_numeric(df["Mobile Phone"], errors="coerce")  # expand sci notation → full integer
+            .fillna("")                                         # keep blanks
+            .astype("Int64")                                    # nullable integer
+            .astype(str)                                        # convert back to string
+            .str.replace(r"\.0$", "", regex=True)               # remove any trailing .0
+        )
+
+    # ======================
+    # Column Mapping
+    # ======================
+    mapping = {
+        "Employee ID": "EmployeeNumber",
+        "Full Name": "EmployeeName",
+        "Gender": "Gender",
+        "Grade": "JobGrade",
+        "Job Role": "JobRole",
+        "Directorate": "Directorate",
+        "Date Of Employment": "DateofEmployment",
+        "Effective Date": "EffectiveDate",
+        "Mobile Phone": "MobilePhone",
+        "Sub-reason": "ReasonForLeaving1",
+        "Reason for Leaving": "OtherReasonForLeaving",
+        "Work Address SolId": "SolID",
+    }
+
+    # Apply mapping
+    df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+
+    # ======================
+    # Required Columns Order
+    # ======================
+    required_cols = [
+        "EmployeeNumber",
+        "EmployeeName",
+        "Gender",
+        "JobGrade",
+        "JobRole",
+        "Directorate",
+        "DateofEmployment",
+        "EffectiveDate",
+        "InitiationDate",
+        "MobilePhone",
+        "ReasonForLeaving1",
+        "OtherReasonForLeaving",
+        "SolID",
+        "DateOfDeactivation",
+    ]
+
+    output_df = pd.DataFrame(columns=required_cols)
+
+    for col in required_cols:
+        if col in df.columns:
+            output_df[col] = df[col]
+        else:
+            output_df[col] = ""
+
+    # ======================
+    # Derived / Cleaned Columns
+    # ======================
+    output_df["InitiationDate"] = output_df["EffectiveDate"]
+    output_df["DateOfDeactivation"] = output_df["EffectiveDate"]
+
+    # Clean SolID
+    output_df["SolID"] = output_df["SolID"].apply(clean_solid)
+
+    # ======================
+    # Download
+    # ======================
+    output_file = "converted_exit_file.xlsx"
+    with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
+        output_df.to_excel(writer, index=False, sheet_name="ExitData")
+
+    with open(output_file, "rb") as f:
+        st.download_button(
+            label="📥 Download Converted File",
+            data=f,
+            file_name=output_file,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    st.success("✅ File converted successfully!")
+
 
     # Footer
     st.markdown("""
