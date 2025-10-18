@@ -310,6 +310,35 @@ else:
             hr_file = st.file_uploader("Upload HR File (Excel)", type=['xlsx'], key="hr_file")
             existing_file = st.file_uploader("Upload Existing Users File (Excel)", type=['xlsx'], key="existing_file")
             sol_file = st.file_uploader("Upload SOL Mapping File (Excel)", type=['xlsx'], key="sol_file")
+
+            password = st.text_input("🔒 Password User Creation", type="password").strip()
+            password_feedback = st.empty()  # placeholder for live feedback
+        
+        def validate_password(pw, userPrincipalName, displayName):
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+    
+    # Check if password contains parts of any email or display name
+    lower_pw = pw.lower()
+    forbidden = re.findall(r'\w+', userPrincipalName) + re.findall(r'\w+', displayName)
+    for word in forbidden:
+        if word.lower() in lower_pw:
+            return False, f"❌ Password cannot contain '{word}'."
+    return True, "✅ Password meets all criteria."
+
+# -------------------------------
+# Step 3: Live Feedback
+# -------------------------------
+if password:
+    valid, msg = validate_password(password, userPrincipalName, displayName)
+    if valid:
+        password_feedback.success(msg)
+    else:
+        password_feedback.error(msg)
             
             # Preview uploaded files
             if hr_file:
@@ -435,7 +464,7 @@ else:
                                     "mailNickName": base_upn,
                                     "memberOf": FIXED_FIELDS["memberOf"],
                                     "employeeID": staff_id,
-                                    "password": "Developer2378",
+                                    "password": password,
                                     "displayNamePrintable": display_name,
                                     "pwdLastSet": FIXED_FIELDS["pwdLastSet"]
                                 })
