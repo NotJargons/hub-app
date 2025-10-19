@@ -707,8 +707,6 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
-            if "Generic Email" in selected_tool:
-            st.info("Creates Generic Email Accounts")
         
 
     # Footer
