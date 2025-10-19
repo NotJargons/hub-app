@@ -212,7 +212,7 @@ else:
             st.info("Creates Service Accounts.")
         if "Vendor Creator" in selected_tool:
             st.info("Creates Accounts for Consultants")
-        else:
+        if "GRP Script" in selected_tool:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
