@@ -212,7 +212,7 @@ else:
             st.info("Creates Service Accounts.")
         if "Vendor Creator" in selected_tool:
             st.info("Creates Accounts for Consultants")
-        if "GRP Script" in selected_tool:
+        else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
@@ -602,7 +602,7 @@ else:
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
-             else:  # GRP Script Generator
+    else:  # GRP Script Generator
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
