@@ -602,6 +602,8 @@ else:
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
+            else:
+
             # GRP Script Generator
             if "GRP Script" in selected_tool:
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
