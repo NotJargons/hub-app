@@ -206,6 +206,12 @@ else:
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
             st.info("Creates Active Directory users from HR Excel files.")
+        if "Generic Email" in selected_tool:
+            st.info("Creates Generic Accounts.")
+        if "Service Account" in selected_tool:
+            st.info("Creates Service Accounts.")
+        if "Vendor Creator" in selected_tool:
+            st.info("Creates Accounts for Consultants")
         else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
