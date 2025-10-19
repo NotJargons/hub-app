@@ -604,7 +604,7 @@ else:
 
             # GRP Script Generator
              
-        else:  "GRP Script" in selected_tool:
+        else:
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
