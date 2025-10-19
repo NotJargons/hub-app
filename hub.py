@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import numpy as np
+import re
 
 # Configure page
 st.set_page_config(
@@ -197,7 +198,7 @@ else:
         st.markdown("### 🔧 Tool Selection")
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator", "Generic Email Creator"],
             index=0
         )
         
@@ -706,6 +707,9 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
+            if "Generic Email" in selected_tool:
+            st.info("Creates Generic Email Accounts")
+        
 
     # Footer
     st.markdown("""
