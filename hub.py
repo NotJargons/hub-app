@@ -715,14 +715,6 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
-
-        else: "Generic Email" in selected_tool:
-        st.markdown('<div class="tool-card"><h2>📧 Generic Email Creator</h2></div>', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.markdown("### 📁 File Upload")
         
 
     # Footer
