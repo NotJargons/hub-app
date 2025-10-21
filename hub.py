@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import time
@@ -6,7 +7,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 import numpy as np
-import re
 
 # Configure page
 st.set_page_config(
@@ -198,7 +198,7 @@ else:
         st.markdown("### 🔧 Tool Selection")
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"], #"📧 Generic Email Creator", "⚙️ Service Account Creator", "👤 Vendor Creator"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"],
             index=0
         )
         
@@ -206,13 +206,7 @@ else:
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
             st.info("Creates Active Directory users from HR Excel files.")
-        #if "Generic Email" in selected_tool:
-            #st.info("Creates Generic Accounts.")
-        #if "Service Account" in selected_tool:
-            #st.info("Creates Service Accounts.")
-        #if "Vendor Creator" in selected_tool:
-            #st.info("Creates Accounts for Consultants")
-        if "GRP Script" in selected_tool:
+        else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
@@ -317,7 +311,7 @@ else:
             hr_file = st.file_uploader("Upload HR File (Excel)", type=['xlsx'], key="hr_file")
             existing_file = st.file_uploader("Upload Existing Users File (Excel)", type=['xlsx'], key="existing_file")
             sol_file = st.file_uploader("Upload SOL Mapping File (Excel)", type=['xlsx'], key="sol_file")
-
+            
             # Preview uploaded files
             if hr_file:
                 st.markdown("#### 👀 HR File Preview")
@@ -442,7 +436,7 @@ else:
                                     "mailNickName": base_upn,
                                     "memberOf": FIXED_FIELDS["memberOf"],
                                     "employeeID": staff_id,
-                                    "password": password,
+                                    "password": "Developer2378",
                                     "displayNamePrintable": display_name,
                                     "pwdLastSet": FIXED_FIELDS["pwdLastSet"]
                                 })
@@ -713,7 +707,6 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
-        
 
     # Footer
     st.markdown("""
