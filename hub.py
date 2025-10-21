@@ -198,7 +198,7 @@ else:
         st.markdown("### 🔧 Tool Selection")
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator", "📧 Generic Email Creator", "⚙️ Service Account Creator", "👤 Vendor Creator"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"], #"📧 Generic Email Creator", "⚙️ Service Account Creator", "👤 Vendor Creator"],
             index=0
         )
         
