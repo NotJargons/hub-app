@@ -774,6 +774,416 @@ else:
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
+    elif "GRP Script" in selected_tool:
+        st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("### 📁 File Upload")
+            grp_file = st.file_uploader("Upload GRP Excel File", type=['xlsx'], key="grp_file")
+            
+            if grp_file:
+                st.markdown("#### 👀 File Preview")
+                grp_df = pd.read_excel(grp_file, dtype=str)  # Keep as strings to preserve leading zeros
+                st.dataframe(grp_df.head(), use_container_width=True)
+                
+                # Show required columns
+                st.markdown("#### ✅ Required Columns Check")
+                required_cols = ['EMAIL_ADDRESS', 'SURNAME', 'FIRST_NAME', 'BRANCH', 'PHONE', 'COUNTRY', 'EMPLOYEE_ID']
+                
+                col_status = []
+                for col in required_cols:
+                    if col in grp_df.columns:
+                        col_status.append(f"✅ {col}")
+                    else:
+                        col_status.append(f"❌ {col}")
+                
+                st.text("\n".join(col_status))
+        
+        with col2:
+            st.markdown("### ⚡ Execution")
+            
+            if st.button("🚀 Generate Script", type="primary", use_container_width=True):
+                if grp_file:
+                    start_time = time.time()
+                    
+                    with st.spinner("Generating SQL statements..."):
+                        try:
+                            grp_df = pd.read_excel(grp_file, dtype=str)
+                            
+                            # SQL template
+                            sql_template = """INSERT INTO CSSERVICE.UBACS_APPUSERS
+   (EMAIL_ADDRESS, SURNAME, FIRST_NAME, MIDDLE_NAME, BRANCH,
+    ROLE, CREATION_DATE, PASSWORD, ACTIVE, CHANGE_PWD_ON_LOGON,
+    LAST_LOGON_DATE, DELETED, CHECKED, FLOOR, SERVICE_GROUP_ID,
+    PHONE, COUNTRY, EMPLOYEE_ID, STATE)
+VALUES
+   ('{EMAIL_ADDRESS}', '{SURNAME}', '{FIRST_NAME}', 'NA', '{BRANCH}',
+    1, sysdate, 'MEFX6Mg1W0', 1, 0,
+    sysdate, 0, 0, NULL, -1,
+    '{PHONE}', '{COUNTRY}', '{EMPLOYEE_ID}', NULL);
+"""
+                            
+                            # Generate SQL statements
+                            sql_statements = []
+                            for _, row in grp_df.iterrows():
+                                sql_statements.append(sql_template.format(**row))
+                            
+                            sql_content = "\n".join(sql_statements)
+                            
+                            end_time = time.time()
+                            execution_time = round(end_time - start_time, 2)
+                            
+                            # Store in session state
+                            st.session_state['grp_sql'] = sql_content
+                            st.session_state['grp_count'] = len(grp_df)
+                            st.session_state['grp_execution_time'] = execution_time
+                            
+                            st.success(f"✅ Script generated in {execution_time}s!")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error generating script: {str(e)}")
+                else:
+                    st.warning("Please upload a GRP Excel file")
+        
+        # Display results
+        if 'grp_sql' in st.session_state:
+            st.markdown("---")
+            st.markdown("### 📊 Results")
+            
+            # Metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.metric("📝 Records Processed", st.session_state['grp_count'])
+                st.markdown('</div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.metric("⚡ SQL Statements", st.session_state['grp_count'])
+                st.markdown('</div>', unsafe_allow_html=True)
+            with col3:
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                st.metric("⏱️ Processing Time", f"{st.session_state['grp_execution_time']}s")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # SQL preview
+            st.markdown("#### 📝 Generated SQL Script Preview")
+            sql_lines = st.session_state['grp_sql'].split('\n')
+            preview_lines = sql_lines[:50]  # Show first 50 lines
+            st.code('\n'.join(preview_lines), language='sql')
+            
+            if len(sql_lines) > 50:
+                st.info(f"Showing first 50 lines. Full script contains {len(sql_lines)} lines.")
+            
+            # Download section
+            st.markdown("### 📥 Download Script File")
+            st.download_button(
+                label="📁 Download SQL Script",
+                data=st.session_state['grp_sql'],
+                file_name=f"grp_sql_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+
+    elif "Generic Email" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>📧 Generic Email Creator</h2></div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; color:gray;'>Create and export generic email accounts effortlessly</p>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Input fields
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            generic_email_full = st.text_input("📧 Generic Email ID (e.g., generictestmail@ubagroup.com)").strip()
+            display_name = st.text_input("📝 Generic Display Name (e.g., Generic Test Mail)").strip()
+            staff_name = st.text_input("👤 Name of Staff (e.g., Emmanuel Imafidon)").strip()
+        
+        with col2:
+            staff_email = st.text_input("📧 Staff Email Address (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            password = st.text_input("🔒 Password for the generic account", type="password").strip()
+            password_feedback = st.empty()
+            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
+        
+        def validate_password(pw, generic_email_full, display_name, staff_email):
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+            
+            # Check if password contains parts of any email or display name
+            lower_pw = pw.lower()
+            forbidden = re.findall(r'\w+', generic_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
+            for word in forbidden:
+                if word.lower() in lower_pw:
+                    return False, f"❌ Password cannot contain '{word}'."
+            return True, "✅ Password meets all criteria."
+        
+        # Live feedback
+        if password:
+            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
+            if valid:
+                password_feedback.success(msg)
+            else:
+                password_feedback.error(msg)
+        
+        # Live length check
+        if generic_email_full:
+            local_part = generic_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.warning(f"❌ Generic Email exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
+            else:
+                st.success(f"✅ Generic Email meets the 20-character criteria ({len(local_part)} chars).")
+        
+        # Generate button
+        if st.button("🚀 Generate CSV"):
+            # Validate inputs
+            if not all([generic_email_full, display_name, staff_name, staff_email, password, ad_file]):
+                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
+                st.stop()
+
+            local_part = generic_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.error("❌ Generic Email still exceeds 20 characters. Please shorten it first.")
+                st.stop()
+
+            # Validate password
+            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
+            if not valid:
+                st.error(msg)
+                st.stop()
+
+            user_principal_name = local_part
+
+            # Read AD Excel
+            try:
+                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
+                ad_df.columns = [str(c).strip() for c in ad_df.columns]
+                st.success("✅ AD Excel loaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to read Excel: {e}")
+                st.stop()
+
+            # Check if Email Already Exists
+            email_col = None
+            for col in ad_df.columns:
+                if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                    email_col = col
+                    break
+            if email_col is None:
+                st.error("❌ Could not find any email column in the AD file.")
+                st.stop()
+            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
+                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
+                st.stop()
+
+            # Lookup Staff Info
+            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
+            if staff_row.empty:
+                st.error(f"❌ Staff email not found in AD: {staff_email}")
+                st.stop()
+            staff_row = staff_row.iloc[0]
+
+            employee_id = staff_row.get("Employee ID", "")
+            department = staff_row.get("Department", "")
+            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
+            street_address = ""
+            if isinstance(office_full, str) and "-" in office_full:
+                street_address = office_full.split("-", 1)[1].strip()
+            mobile = staff_row.get("Telephone Number", "")
+
+            # Build Export Row
+            export_row = {
+                "givenName": '',
+                "sn": '',
+                "userPrincipalName": user_principal_name,
+                "displayName": display_name,
+                "description": f"Responsible party to the Generic Account is {staff_name} / {employee_id} / {department}",
+                "title": "",
+                "department": department,
+                "sAMAccountName": user_principal_name,
+                "physicalDeliveryOfficeName": office_full,
+                "streetAddress": street_address,
+                "telephoneNumber": mobile,
+                "name": display_name,
+                "mail": user_principal_name,
+                "company": "United Bank for Africa Plc",
+                "co": staff_row.get("Country", "Nigeria"),
+                "mobile": mobile,
+                "employeeID": '',
+                "OUName": "CN=Users,DC=ubagroup,DC=com",
+                "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
+                "msExchOmaAdminWirelessEnable": "0",
+                "msExchHomeServerName": "/o=UBAGROUP/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Configuration/cn=Servers/cn=HQMBX01",
+                "memberOf": "UBAMicrosoftCloud;NG_Normal",
+                "pwdLastSet": "0",
+                "password": password
+            }
+
+            # Export CSV
+            export_df = pd.DataFrame([export_row])
+            st.success("✅ Export ready!")
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=export_df.to_csv(index=False),
+                file_name="generic_email_export.csv",
+                mime="text/csv"
+            )
+
+            with st.expander("📋 Preview Export Table"):
+                st.dataframe(export_df)
+
+    elif "Service Email" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>🔧 Service Email Creator</h2></div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; color:gray;'>Create and export service email accounts effortlessly</p>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Input fields
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            service_email_full = st.text_input("📧 Service Account Email (e.g., serviceaccounttest@ubagroup.com)").strip()
+            display_name = st.text_input("📝 SERVICE ACCOUNT NAME (e.g., service Test Mail)").strip()
+            staff_name = st.text_input("👤 Responsible Party (e.g., Emmanuel Imafidon)").strip()
+        
+        with col2:
+            staff_email = st.text_input("📧 Responsible Party's Email (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            password = st.text_input("🔒 Password for the Service Account", type="password").strip()
+            password_feedback = st.empty()
+            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
+        
+        def validate_password(pw, service_email_full, display_name, staff_email):
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+            
+            # Check if password contains parts of any email or display name
+            lower_pw = pw.lower()
+            forbidden = re.findall(r'\w+', service_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
+            for word in forbidden:
+                if word.lower() in lower_pw:
+                    return False, f"❌ Password cannot contain '{word}'."
+            return True, "✅ Password meets all criteria."
+        
+        # Live feedback
+        if password:
+            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
+            if valid:
+                password_feedback.success(msg)
+            else:
+                password_feedback.error(msg)
+
+        # Live length check
+        if service_email_full:
+            local_part = service_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.warning(f"❌ Local part exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
+            else:
+                st.success(f"✅ Service Account Email meets the 20-character criteria ({len(local_part)} chars).")
+        
+        # Generate button
+        if st.button("🚀 Generate CSV", key="service_generate"):
+            # Validate inputs
+            if not all([service_email_full, display_name, staff_name, staff_email, password, ad_file]):
+                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
+                st.stop()
+
+            local_part = service_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.error("❌ Service Account still exceeds 20 characters. Please shorten it first.")
+                st.stop()
+
+            # Validate password
+            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
+            if not valid:
+                st.error(msg)
+                st.stop()
+
+            user_principal_name = local_part
+
+            # Read AD Excel
+            try:
+                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
+                ad_df.columns = [str(c).strip() for c in ad_df.columns]
+                st.success("✅ AD Excel loaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to read Excel: {e}")
+                st.stop()
+
+            # Check if Email Already Exists
+            email_col = None
+            for col in ad_df.columns:
+                if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                    email_col = col
+                    break
+            if email_col is None:
+                st.error("❌ Could not find any email column in the AD file.")
+                st.stop()
+            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
+                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
+                st.stop()
+
+            # Lookup Staff Info
+            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
+            if staff_row.empty:
+                st.error(f"❌ Staff email not found in AD: {staff_email}")
+                st.stop()
+            staff_row = staff_row.iloc[0]
+
+            employee_id = staff_row.get("Employee ID", "")
+            department = staff_row.get("Department", "")
+            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
+            street_address = ""
+            if isinstance(office_full, str) and "-" in office_full:
+                street_address = office_full.split("-", 1)[1].strip()
+            mobile = staff_row.get("Telephone Number", "")
+
+            # Build Export Row
+            export_row = {
+                "givenName": '',
+                "sn": '',
+                "userPrincipalName": user_principal_name,
+                "displayName": display_name,
+                "description": f"Responsible party to the Service Account is {staff_name} / {employee_id} / {department}",
+                "title": "",
+                "department": department,
+                "sAMAccountName": user_principal_name,
+                "physicalDeliveryOfficeName": office_full,
+                "streetAddress": street_address,
+                "telephoneNumber": mobile,
+                "name": display_name,
+                "mail": user_principal_name,
+                "company": "United Bank for Africa Plc",
+                "co": staff_row.get("Country", "Nigeria"),
+                "mobile": mobile,
+                "employeeID": '',
+                "OUName": "CN=Users,DC=ubagroup,DC=com",
+                "homeMDB": "",
+                "msExchOmaAdminWirelessEnable": "0",
+                "msExchHomeServerName": "",
+                "memberOf": "UBAMicrosoftCloud;NG_Normal",
+                "pwdLastSet": "0",
+                "password": password
+            }
+
+            # Export CSV
+            export_df = pd.DataFrame([export_row])
+            st.success("✅ Export ready!")
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=export_df.to_csv(index=False),
+                file_name="service_email_export.csv",
+                mime="text/csv"
+            )
+
+            with st.expander("📋 Preview Export Table"):
+                st.dataframe(export_df)
+
     elif "Vendor Creator" in selected_tool:
         st.markdown('<div class="tool-card"><h2>🏦 Vendor Creator</h2></div>', unsafe_allow_html=True)
         st.write("Create vendor accounts or single user accounts with manual entry.")
@@ -784,6 +1194,7 @@ else:
             "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
             "msExchOmaAdminWirelessEnable": "0",
             "msExchHomeServerName": "/o=UBAGROUP/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Configuration/cn=Servers/cn=HQMBX01",
+            "memberOf": "Remote Support",
             "company": "United Bank for Africa Plc",
             "co": "Nigeria",
             "pwdLastSet": "0"
@@ -842,7 +1253,7 @@ else:
         
         # File uploads
         st.sidebar.subheader("📂 File Uploads")
-        existing_file = st.sidebar.file_uploader("Upload existing_users.xlsx (required)", type=["xlsx", "xls", "csv"])
+        existing_file = st.sidebar.file_uploader("Upload existing_users.xlsx (optional)", type=["xlsx", "xls", "csv"])
         
         # Load files
         existing_df = load_existing_users(existing_file)
@@ -875,10 +1286,9 @@ else:
             first_name = st.text_input("First Name").strip()
             last_name = st.text_input("Last Name").strip()
             job_role = st.text_input("Job Role").strip()
-            department = st.text_input("Department").strip()
+            phone_number = st.text_input("Phone Number").strip()
         
         with col2:
-            phone_number = st.text_input("Phone Number").strip()
             staff_id = st.text_input("Staff ID").strip()
             
             # SOL ID dropdown
@@ -1376,9 +1786,7 @@ else:
             sol_id = sol_choice.split(" - ")[0]
             office_name = sol_choice.split(" - ")[1]
             
-            # Responsible Party field - only show for Vendor Account
-            if account_type == "Vendor Account":
-                responsible_party = st.text_input("Responsible Party (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            responsible_party = st.text_input("Responsible Party (e.g., emmanuel.imafidon@ubagroup.com)").strip()
             
             # Password option
             password_option = st.radio(
@@ -1407,10 +1815,10 @@ else:
                     else:
                         password_feedback.error(msg)
             else:
-                custom_password = "Developer2378"  # Default password
+                custom_password = "VendorPass123"  # Default password
         
         # Responsible party info display
-        if account_type == "Vendor Account" and existing_df is not None and responsible_party:
+        if existing_df is not None and responsible_party:
             email_col = None
             for col in existing_df.columns:
                 if re.search(r"(mail|email|userprincipalname)", col, re.I):
@@ -1428,18 +1836,13 @@ else:
                 else:
                     st.warning(f"Responsible party {responsible_party} not found in existing users")
         
-        # Create User button
-        if st.button("➕ Create", key="vendor_create"):
-            required = [first_name, last_name, job_role, phone_number, staff_id, sol_id]
-            if account_type == "Vendor Account":
-                required.append(responsible_party)
-            
+        # Add User button
+        if st.button("➕ Add User", key="vendor_add"):
+            required = [first_name, last_name, job_role, phone_number, staff_id, sol_id, responsible_party]
             if not all(required):
                 st.error("Please fill all required fields.")
             elif password_option == "Set Custom Password" and (not custom_password or not validate_password(custom_password)[0]):
                 st.error("Please provide a valid custom password.")
-            elif existing_df is None:
-                st.error("Please upload existing users file for validation.")
             else:
                 # Generate username
                 username = make_username(first_name, last_name)
@@ -1450,7 +1853,7 @@ else:
                 staff_emp_id = ""
                 staff_dept = ""
                 
-                if account_type == "Vendor Account" and existing_df is not None:
+                if existing_df is not None:
                     email_col = None
                     for col in existing_df.columns:
                         if re.search(r"(mail|email|userprincipalname)", col, re.I):
@@ -1471,27 +1874,11 @@ else:
                 else:  # Single User Account
                     description = staff_id
                 
-                # Map department using job role or input department
-                if department:
-                    dept = proper_case(department)
-                else:
-                    dept = clean_department("", job_role, title_dept_mapping)
+                # Map department using job role
+                department = clean_department("", job_role, title_dept_mapping)
                 
                 # Get SOL info
                 street_address = office_name
-                
-                # Check for existing users
-                existing_sam = set(existing_df["SAM Account Name"].str.lower().dropna())
-                existing_staff_ids = set(existing_df["Employee ID"].dropna().astype(str))
-                
-                # Skip if user already exists
-                if username.lower() in existing_sam:
-                    st.error(f"Username {username} already exists in existing users.")
-                    st.stop()
-                
-                if staff_id in existing_staff_ids:
-                    st.error(f"Staff ID {staff_id} already exists in existing users.")
-                    st.stop()
                 
                 # Create record
                 record = {
@@ -1501,7 +1888,7 @@ else:
                     "displayName": display_name,
                     "description": description,
                     "title": job_role,
-                    "department": dept,
+                    "department": department,
                     "sAMAccountName": username,
                     "physicalDeliveryOfficeName": office_name,
                     "streetAddress": street_address,
@@ -1516,7 +1903,7 @@ else:
                     "msExchOmaAdminWirelessEnable": FIXED_FIELDS["msExchOmaAdminWirelessEnable"],
                     "msExchHomeServerName": FIXED_FIELDS["msExchHomeServerName"],
                     "mailNickName": username,
-                    "memberOf": "Remote Support" if account_type == "Vendor Account" else "All Staff Nigeria;UBAMicrosoftCloud;NG_Normal",
+                    "memberOf": FIXED_FIELDS["memberOf"],
                     "employeeID": staff_id,
                     "password": custom_password,
                     "displayNamePrintable": display_name,
@@ -1524,34 +1911,13 @@ else:
                 }
 
                 st.session_state["vendor_new_users"].append(record)
-                st.success(f"Created {display_name} (Username: {username})")
+                st.success(f"Added {display_name} (Username: {username})")
         
         # Preview & Export
         st.markdown("---")
-        st.markdown("### 📊 Results")
+        st.subheader("Preview - Users to be created")
         
-        # Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("✅ Users Created", len(st.session_state["vendor_new_users"]))
-            st.markdown('</div>', unsafe_allow_html=True)
-        with col2:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("⏱️ Processing Time", "0.00s")
-            st.markdown('</div>', unsafe_allow_html=True)
-        with col3:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("📊 Success Rate", "100%")
-            st.markdown('</div>', unsafe_allow_html=True)
-        with col4:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.metric("📝 Account Type", account_type)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Output preview
         if st.session_state["vendor_new_users"]:
-            st.markdown("#### 👥 Created Users Preview")
             preview_df = pd.DataFrame(st.session_state["vendor_new_users"])
             preview_df = preview_df.assign(
                 userPrincipalName=preview_df["userPrincipalName"].astype(str) + "@ubagroup.com",
@@ -1559,75 +1925,141 @@ else:
             )
             st.dataframe(preview_df[EXPORT_COLUMNS], use_container_width=True)
         else:
-            st.info("No users created yet.")
+            st.info("No users added yet.")
         
-        # Download section
-        st.markdown("### 📥 Download Files")
-        col1, col2, col3, col4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("↩️ Remove Last", key="vendor_remove"):
+                if st.session_state["vendor_new_users"]:
+                    removed = st.session_state["vendor_new_users"].pop()
+                    st.warning(f"Removed {removed['displayName']} (Username: {removed['userPrincipalName']})")
+        with c2:
+            if st.button("🧹 Clear All", key="vendor_clear"):
+                st.session_state["vendor_new_users"] = []
+                st.info("Cleared all staged users.")
+        with c3:
+            if st.button("💾 Export CSV", key="vendor_export"):
+                if not st.session_state["vendor_new_users"]:
+                    st.error("No users to export.")
+                else:
+                    export_df = pd.DataFrame(st.session_state["vendor_new_users"])
+                    export_df["userPrincipalName"] = export_df["userPrincipalName"] + "@ubagroup.com"
+                    export_df["mail"] = export_df["mail"] + "@ubagroup.com"
+                    for col in EXPORT_COLUMNS:
+                        if col not in export_df.columns:
+                            export_df[col] = ""
+                    export_df = export_df[EXPORT_COLUMNS]
+                    buf = BytesIO()
+                    export_df.to_csv(buf, index=False)
+                    buf.seek(0)
+                    st.download_button("⬇️ Download Export CSV", buf.getvalue(), file_name="vendor_export.csv", mime="text/csv")
+                    st.success(f"Export ready — {len(export_df)} user(s).")
+
+    elif "Exit File" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>📤 Exit File Converter</h2></div>', unsafe_allow_html=True)
+        st.write("Upload an Exit Portal Excel/CSV file and download it in the required template format.")
         
-        with col1:
-            if st.session_state["vendor_new_users"]:
-                # CSV download with all fields
-                csv_buffer = io.StringIO()
-                pd.DataFrame(st.session_state["vendor_new_users"])[EXPORT_COLUMNS].to_csv(csv_buffer, index=False)
-                st.download_button(
-                    label="📁 Download Users CSV",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"vendor_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
+        uploaded_file = st.file_uploader("Upload Exit File", type=["xlsx", "xls", "csv"])
+        
+        if uploaded_file:
+            # Read file
+            if uploaded_file.name.lower().endswith(".csv"):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            # Pre-process Mobile Phone
+            if "Mobile Phone" in df.columns:
+                df["Mobile Phone"] = (
+                    pd.to_numeric(df["Mobile Phone"], errors="coerce")
+                    .astype("Int64")
+                    .astype(str)
+                    .replace("<NA>", "")
+                    .str.replace(r"\.0$", "", regex=True)
+                    .str.strip()
                 )
-        
-        with col2:
-            if st.session_state["vendor_new_users"]:
-                # HTML report
-                html_content = "<html><body>"
-                
-                # Created users section
-                if len(st.session_state["vendor_new_users"]) > 1:
-                    html_content += "<p><b>Users have been created as:</b></p>"
-                    html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                    html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
-                    for user in st.session_state["vendor_new_users"]:
-                        email = f"{user['userPrincipalName']}@ubagroup.com"
-                        html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
-                    html_content += "</table>"
-                    html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
-                elif len(st.session_state["vendor_new_users"]) == 1:
-                    html_content += "<p><b>User has been created as:</b></p>"
-                    html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                    html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
-                    for user in st.session_state["vendor_new_users"]:
-                        email = f"{user['userPrincipalName']}@ubagroup.com"
-                        html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
-                    html_content += "</table>"
-                    html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
-                
-                html_content += "</body></html>"
-                
+            
+            # Column Mapping
+            mapping = {
+                "Employee ID": "EmployeeNumber",
+                "Full Name": "EmployeeName",
+                "Gender": "Gender",
+                "Grade": "JobGrade",
+                "Job Role": "JobRole",
+                "Directorate": "Directorate",
+                "Date Of Employment": "DateofEmployment",
+                "Effective Date": "EffectiveDate",
+                "Mobile Phone": "MobilePhone",
+                "Sub-reason": "ReasonForLeaving1",
+                "Reason for Leaving": "OtherReasonForLeaving",
+                "Work Address SolId": "SolID",
+            }
+            
+            # Apply mapping
+            df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+            
+            # Required Columns Order
+            required_cols = [
+                "EmployeeNumber",
+                "EmployeeName",
+                "Gender",
+                "JobGrade",
+                "JobRole",
+                "Directorate",
+                "DateofEmployment",
+                "EffectiveDate",
+                "InitiationDate",
+                "MobilePhone",
+                "ReasonForLeaving1",
+                "OtherReasonForLeaving",
+                "SolID",
+                "DateOfDeactivation",
+            ]
+            
+            # Initialize output dataframe
+            output_df = pd.DataFrame(columns=required_cols)
+            
+            for col in required_cols:
+                if col in df.columns:
+                    output_df[col] = df[col]
+                else:
+                    output_df[col] = ""
+            
+            # Derived / Cleaned Columns
+            output_df["InitiationDate"] = output_df["EffectiveDate"]
+            output_df["DateOfDeactivation"] = output_df["EffectiveDate"]
+            
+            # Clean SolID column
+            def clean_solid(v):
+                if pd.isna(v) or v == "":
+                    return ""
+                s = str(v).strip()
+                s = re.sub(r"\D", "", s)
+                if s and not s.startswith("0"):
+                    s = "0" + s
+                return s
+            
+            if "SolID" in output_df.columns:
+                output_df["SolID"] = output_df["SolID"].apply(clean_solid)
+            
+            # Download
+            output_file = "converted_exit_file.xlsx"
+            with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
+                output_df.to_excel(writer, index=False, sheet_name="ExitData")
+            
+            with open(output_file, "rb") as f:
                 st.download_button(
-                    label="📄 Download HTML Report",
-                    data=html_content,
-                    file_name=f"vendor_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                    mime="text/html",
-                    use_container_width=True
+                    label="📥 Download Converted File",
+                    data=f,
+                    file_name=output_file,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
-        
-        with col3:
-            if st.session_state["vendor_new_users"]:
-                # Clear button
-                if st.button("🧹 Clear All", key="vendor_clear"):
-                    st.session_state["vendor_new_users"] = []
-                    st.info("Cleared all created users.")
-                    st.rerun()
-        
-        with col4:
-            if st.session_state["vendor_new_users"]:
-                # Create another button
-                if st.button("➕ Create Another", key="vendor_create_another"):
-                    st.session_state["vendor_new_users"] = []
-                    st.info("Ready to create another user.")
-                    st.rerun()
+            
+            st.success("✅ File converted successfully!")
+            
+            # Preview
+            with st.expander("📋 Preview Converted Data"):
+                st.dataframe(output_df)
 
     # Footer
     st.markdown("""
