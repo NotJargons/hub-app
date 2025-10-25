@@ -22,8 +22,8 @@ if dept_map_file:
     try:
         map_df = pd.read_excel(dept_map_file)
         JOB_TO_DEPT_MAP = {
-            str(row["Job Title"]).strip().lower(): str(row["Department"]).strip()
-            for _, row in map_df.iterrows()
+    str(row["Title"]).strip().lower(): str(row["Department"]).strip()
+    for _, row in map_df.iterrows()
         }
         st.sidebar.success(f"✅ Loaded {len(JOB_TO_DEPT_MAP)} mappings.")
     except Exception as e:
