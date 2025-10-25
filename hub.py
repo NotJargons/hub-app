@@ -255,7 +255,7 @@ else:
 
         return df[expected_cols]
 
-    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
+    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD", "PSG", "ERSM"}
 
     def normalize_name(name: str, case="title"):
         if not name or str(name).lower() == "nan": return ""
