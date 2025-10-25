@@ -8,6 +8,30 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
+# -----------------------------
+# Department Mapping Upload
+# -----------------------------
+with st.sidebar:
+    st.markdown("### 🧭 Department Mapping (Optional)")
+    dept_map_file = st.file_uploader("Upload JobTitle–Department Map", type=['xlsx'], key="dept_map")
+
+# Load the mapping if provided
+JOB_TO_DEPT_MAP = {}
+
+if dept_map_file:
+    try:
+        map_df = pd.read_excel(dept_map_file)
+        JOB_TO_DEPT_MAP = {
+            str(row["Job Title"]).strip().lower(): str(row["Department"]).strip()
+            for _, row in map_df.iterrows()
+        }
+        st.sidebar.success(f"✅ Loaded {len(JOB_TO_DEPT_MAP)} mappings.")
+    except Exception as e:
+        st.sidebar.error(f"❌ Error reading mapping file: {e}")
+else:
+    st.sidebar.info("Using default department mapping.")
+
+
 # Configure page
 st.set_page_config(
     page_title="ITCare Hub",
@@ -217,9 +241,9 @@ else:
             "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
             "first name": ["first name", "firstname", "emp first name", "given name"],
             "surname": ["surname", "last name", "lastname", "family name"],
-            "middle name": ["middle name", "middlename", "other name"],
+            "middle name": ["middle name", "middlename", "other name", "othername"],
             "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
-            "role": ["role", "job role", "position", "designation", "job title"],
+            "role": ["role","title", "job role", "position", "designation", "job title"],
             "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
             "department": ["department", "dept", "unit", "division"]
         }
