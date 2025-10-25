@@ -1185,11 +1185,11 @@ VALUES
                 st.dataframe(export_df)
 
     elif "Vendor Creator" in selected_tool:
-        st.markdown('<div class="tool-card"><h2>🏦 Vendor Creator (Manual Entry)</h2></div>', unsafe_allow_html=True)
-        st.write("Fill details below, choose SOL, click **Add User** for each vendor. When finished click **Export CSV**.")
+        st.markdown('<div class="tool-card"><h2>🏦 Vendor Creator</h2></div>', unsafe_allow_html=True)
+        st.write("Create vendor accounts or single user accounts with manual entry.")
         
         # Constants
-        CONSTANTS = {
+        FIXED_FIELDS = {
             "OUName": "CN=Users,DC=ubagroup,DC=com",
             "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
             "msExchOmaAdminWirelessEnable": "0",
@@ -1208,36 +1208,6 @@ VALUES
         ]
         
         # Helper functions
-        def detect_sol_columns(df: pd.DataFrame):
-            cols = [c for c in df.columns]
-            sol_id_col, sol_name_col, street_col = None, None, None
-            for c in cols:
-                lc = c.lower()
-                if any(k in lc for k in ["sol", "sol id", "solid", "nga_"]) and sol_id_col is None:
-                    sol_id_col = c
-                if any(k in lc for k in ["physical", "delivery", "office"]) and sol_name_col is None:
-                    sol_name_col = c
-                if any(k in lc for k in ["street", "address"]) and street_col is None:
-                    street_col = c
-            if sol_id_col is None and cols: sol_id_col = cols[0]
-            if sol_name_col is None and len(cols) > 1: sol_name_col = cols[1]
-            if street_col is None and len(cols) > 2: street_col = cols[2]
-            return sol_id_col, sol_name_col, street_col
-
-        def load_sol_list(sol_file):
-            if sol_file is None:
-                return pd.DataFrame(), [], "", "", ""
-            try:
-                df = pd.read_excel(sol_file)
-                sol_id_col, sol_name_col, street_col = detect_sol_columns(df)
-                df["SOL_ID"] = df[sol_id_col].astype(str).str.strip()
-                df["SOL_NAME"] = df[sol_name_col].astype(str).str.strip()
-                df["DISPLAY"] = df["SOL_ID"] + " - " + df["SOL_NAME"]
-                return df, df["DISPLAY"].dropna().unique().tolist(), sol_id_col, sol_name_col, street_col
-            except Exception as e:
-                st.error(f"❌ Failed to read SOL mapping: {e}")
-                return pd.DataFrame(), [], "", "", ""
-
         def load_existing_users(existing_file):
             if existing_file is None:
                 return None
@@ -1283,102 +1253,665 @@ VALUES
         
         # File uploads
         st.sidebar.subheader("📂 File Uploads")
-        sol_file = st.sidebar.file_uploader("Upload SOL mapping file", type=["xlsx", "xls", "csv"])
         existing_file = st.sidebar.file_uploader("Upload existing_users.xlsx (optional)", type=["xlsx", "xls", "csv"])
         
         # Load files
-        sol_df, sol_list, sol_id_col, sol_name_col, street_col = load_sol_list(sol_file)
         existing_df = load_existing_users(existing_file)
+        
+        # Build title-department mapping from existing users
+        title_dept_mapping = {}
+        if existing_df is not None:
+            title_dept_mapping = build_title_department_mapping(existing_df)
+            if title_dept_mapping:
+                st.sidebar.success(f"✅ Built department mapping for {len(title_dept_mapping)} unique job titles")
+            else:
+                st.sidebar.warning("⚠️ Could not build department mapping from existing users")
         
         # Session storage
         if "vendor_new_users" not in st.session_state:
             st.session_state["vendor_new_users"] = []
         
+        # Account type selection
+        account_type = st.radio(
+            "Select Account Type:",
+            ["Vendor Account", "Single User Account"],
+            index=0
+        )
+        
         # UI
-        left, right = st.columns([2, 1])
+        st.markdown("### 📝 Account Details")
+        col1, col2 = st.columns(2)
         
-        with left:
-            st.subheader("User details")
-            first_name = st.text_input("First Name (givenName)").strip()
-            surname = st.text_input("Surname / Last Name (sn)").strip()
-            job_title = st.text_input("Job Title (title)").strip()
-            department = st.text_input("Department").strip()
-            phone = st.text_input("Phone Number (telephoneNumber & mobile)").strip()
-            password = st.text_input("Password (meets rules)", type="password")
-            staff_email = st.text_input("Responsible Party Email (for description)").strip()
+        with col1:
+            first_name = st.text_input("First Name").strip()
+            last_name = st.text_input("Last Name").strip()
+            job_role = st.text_input("Job Role").strip()
+            phone_number = st.text_input("Phone Number").strip()
         
-        with right:
-            st.subheader("SOL / Branch")
-            if sol_list:
-                sol_choice = st.selectbox("Select SOL", sol_list)
-                street_address = ""
-                sr = sol_df.loc[sol_df["DISPLAY"] == sol_choice]
-                if not sr.empty and street_col:
-                    street_address = sr.iloc[0].get(street_col, "")
+        with col2:
+            staff_id = st.text_input("Staff ID").strip()
+            
+            # SOL ID dropdown
+            sol_options = [
+                "0999 - NGA_0999 - UBA House, 57 Marina, Lagos Island, Lagos",
+                "0462 - NGA_0462 - 53,Lagos Rd. Ikorodu Town, Lagos",
+                "0049 - NGA_0049 - Ado-Owo Rd Op Fire Brgde Akure, Ondo",
+                "0450 - NGA_0450 - Ajose Adeogun, Lagos",
+                "0585 - NGA_0585 - Adeyemi College Of Education, Ondo",
+                "0570 - NGA_0570 - Oye Ekiti Business Office, Ekiti",
+                "0137 - NGA_0137 - Ikeja G.R.A,Joel Ogunnaike Str., Lagos",
+                "0093 - NGA_0093 - 1662 Oyin Jolayemi St VI, Lagos",
+                "0269 - NGA_0269 - Agbogbo Oke, Yaba-Ondo, Ondo",
+                "0435 - NGA_0435 - 45, Airport Rd. Benin, Edo",
+                "0069 - NGA_0069 - 8, Ojo-Igbede Road, Lagos",
+                "0627 - NGA_0627 - Agric Isawo Rd. Ikorodu, Lagos",
+                "0595 - NGA_0595 - Kofo Ridua Street, Wuse Zone 5, Abuja",
+                "0190 - NGA_0190 - Near Motor Park Sardauna LGA, Taraba",
+                "0039 - NGA_0039 - NAS Complex 3 Arms Zone, Maitama, Abuja",
+                "0155 - NGA_0155 - Km 18 Lekki-Epe Exp. Way Lekki, Lagos",
+                "0214 - NGA_0214 - Behind Bokkos LG Sec, Bokkos, Plateau",
+                "0063 - NGA_0063 - 37, Abdulkadir Ahmed Way, Bauchi",
+                "0465 - NGA_0465 - University Of Nigeria Nsukka, Enugu",
+                "0493 - NGA_0493 - Area 8 Garki, Abuja",
+                "0024 - NGA_0024 - Plot A 59 CBD Swali Rd Yenagoa, Bayelsa",
+                "0630 - NGA_0630 - Plot 12, 341 Road, 3rd Avenue, Gwarinpa Estate, Abuja",
+                "0021 - NGA_0021 - Plot 15, Blk 1 Abak Rd Uyo, Akwa-Ibom",
+                "0521 - NGA_0521 - Esuene Drive,Ikot-Ekpene, Akwa-Ibom",
+                "0360 - NGA_0360 - 12 Grace Bill Rd Eket, Akwa-Ibom",
+                "0538 - NGA_0538 - Banking Layout Udo Udoma Avenue, Akwa-Ibom",
+                "0033 - NGA_0033 - 25 Trans Amadi Layout PH, Rivers",
+                "0242 - NGA_0242 - 5 Factory Road Aba, Abia",
+                "0447 - NGA_0447 - 43 Lokoja-Okene Rd Okene, Kogi",
+                "0558 - NGA_0558 - 85, Abeokuta Express Way, Dopemu, Lagos",
+                "0208 - NGA_0208 - Lagos - Kaduna Road, Mokwa, Niger",
+                "0062 - NGA_0062 - 31 Obafemi Awolowo Wy, Osogbo, Osun",
+                "0334 - NGA_0334 - 58 Ayegunle Str Agbado, Ekiti",
+                "0434 - NGA_0434 - 135, Ikorodu Road, Onipanu, Lagos",
+                "0157 - NGA_0157 - Babs Animashaun Str Surulere, Lagos",
+                "0022 - NGA_0022 - 10, Osolo Way, Lagos",
+                "0404 - NGA_0404 - 145, Murtala Mohammed Rd,Lokoja, Kogi",
+                "0138 - NGA_0138 - Gbagada Expressway, Lagos",
+                "0432 - NGA_0432 - 89C, Ekenwan Rd. Benin, Edo",
+                "0042 - NGA_0042 - 1 Taylor Road, G. Cappa Iddo, Lagos",
+                "0460 - NGA_0460 - 73, Oluwole Area, Saki Road, Iseyin, Oyo",
+                "0342 - NGA_0342 - UBA Pensions, 3rd Floor, 22B Idowu Taylor Street, V/Island, Lagos",
+                "0092 - NGA_0092 - 23 Rd/72 Junction Festac Town, Lagos",
+                "0437 - NGA_0437 - Lautech Ogbomosho, Oyo",
+                "0160 - NGA_0160 - 97-105 Broad Street, Lagos",
+                "0048 - NGA_0048 - Sani Abacha Way, Kiyawa Rd, Jigawa",
+                "0640 - NGA_0640 - Kofar Ruwa, Kano",
+                "0329 - NGA_0329 - Baga Rd Maiduguri, Borno",
+                "0305 - NGA_0305 - Kankia Bye Pass, Dutsin-Ma, Katsina",
+                "0045 - NGA_0045 - 146-148, Zaria Road, Funtua, Katsina",
+                "0225 - NGA_0225 - Aliyu Jodi Road, Sokoto",
+                "0310 - NGA_0310 - 56, Ahmadu Bello Way, Adamawa",
+                "0229 - NGA_0229 - Tashar Nana Road, Argungu, Kebbi",
+                "0028 - NGA_0028 - 1 Government House Rd S.Abacha Way Gusua, Zamfara",
+                "0345 - NGA_0345 - 161-162 Sokoto Rd Opp. Abu Samaru, Kaduna",
+                "0362 - NGA_0362 - 31, Ado Bayero Road, Kano",
+                "0181 - NGA_0181 - No 1 Kano Road, Sokoto",
+                "0547 - NGA_0547 - 7,Ukpenu Road, Ekpoma, Edo",
+                "0546 - NGA_0546 - Badagry Business Office, Lagos",
+                "0219 - NGA_0219 - Kachia Road, Kaduna",
+                "0055 - NGA_0055 - 137 Muritala M. Way, Ilorin, Kwara",
+                "0162 - NGA_0162 - 9, Wharf Road, Kariko House, Lagos",
+                "0040 - NGA_0040 - Plot 1347 A. Bello Way Garki2, Abuja",
+                "0614 - NGA_0614 - Nawa Complex, 106/107 Ahmadu Bello way, Kado Kuchi District, Abuja",
+                "0215 - NGA_0215 - 4B, Bank Road, Kano",
+                "0415 - NGA_0415 - 473B,Abeokuta Express Rd, Lagos",
+                "0088 - NGA_0088 - 1 Julius Nyerere Asokoro, Abuja",
+                "0061 - NGA_0061 - 1 Kasim Ibrahim Way Damaturu, Yobe",
+                "0540 - NGA_0540 - Ayingba Opp. Kogi State University, Kogi",
+                "0537 - NGA_0537 - Abubakar Burga Street Keffi, Nasarawa",
+                "0505 - NGA_0505 - 24 Sir Kashim Ibrahim, Maiduguri, Borno",
+                "0041 - NGA_0041 - 20 Ijaiye Str Okearin, Lagos",
+                "0452 - NGA_0452 - 220 Ikorodu Rd Palmgrove, Lagos",
+                "0217 - NGA_0217 - 3, Yakubu Gowon, Kaduna, Nigeria.",
+                "0132 - NGA_0132 - National Hospital Garki, Abuja",
+                "0634 - NGA_0634 - Kawo, Kaduna State",
+                "0401 - NGA_0401 - 3, Wahab Folawiyo Road, Ilorin, Kwara",
+                "0035 - NGA_0035 - 165, IBB Way, Katsina",
+                "0280 - NGA_0280 - Kano Road, Hadejia, Jigawa",
+                "0204 - NGA_0204 - 123 Mur. Mohammed Way Ilorin, Kwara",
+                "0266 - NGA_0266 - 89C, Ayegba Omaidoko Way, Idah, Kogi",
+                "0393 - NGA_0393 - 550 Ikorodu Rd Mile 12 Ketu, Lagos",
+                "0142 - NGA_0142 - 29 Badagry Exp-Way Odunade",
+                "0430 - NGA_0430 - University Of Ilorin, Kwara",
+                "0148 - NGA_0148 - 1607 Adeola Hopewell Street Vi, Lagos",
+                "0372 - NGA_0372 - 3 Ziks Avenue Abakaliki, Ebonyi",
+                "0344 - NGA_0344 - Kafanchan Road, Kaduna",
+                "0304 - NGA_0304 - K1, Polytechnic Road, Tudun Wada, Kaduna",
+                "0419 - NGA_0419 - 60,Marina,Marine View Plaza, Lagos",
+                "0026 - NGA_0026 - F11, Kaduna Road, Zaria, Kaduna",
+                "0220 - NGA_0220 - F1, Kaduna Road, Zaria, Kaduna",
+                "0459 - NGA_0459 - Saki Business Office, Oyo",
+                "0103 - NGA_0103 - 18 Adetokunbo Ademola Wuse II, Abuja",
+                "0210 - NGA_0210 - 5 Onikolobo Rd Paseke Abeokuta, Ogun",
+                "0116 - NGA_0116 - Adankolo Junction Lokoja, Kogi",
+                "0602 - NGA_0602 - Aiyedun Road Egosi Ile Kwara, Kwara",
+                "0034 - NGA_0034 - 134, Hammaruwa Way, Jalingo, Taraba",
+                "0150 - NGA_0150 - 62, Jattu Rd, Auchi, Edo",
+                "0303 - NGA_0303 - Biu Road, Gombe",
+                "0029 - NGA_0029 - 10, Kano Road, Sokoto",
+                "0550 - NGA_0550 - Ceddi Plaza, Abuja",
+                "0001 - NGA_0001 - 33B Bishop Aboyade Cole St, VI, Lagos",
+                "0506 - NGA_0506 - 165 Maiduguri Rd, Hotoro, Kano",
+                "0097 - NGA_0097 - 3A, France Road, Sabon Gari, Kano",
+                "0051 - NGA_0051 - Plaza Road, Kantin Kwari, Kano",
+                "0589 - NGA_0589 - Kaduna By-Pass, Kaduna",
+                "0004 - NGA_0004 - 15S, Bello Road, Kano",
+                "0188 - NGA_0188 - 36, Gal. Aminu Way, Jimeta Yola, Adamawa",
+                "0350 - NGA_0350 - 28 Makama Dogo Rd, Nasarawa",
+                "0199 - NGA_0199 - 4, Akpakpava Road, Benin, Edo",
+                "0458 - NGA_0458 - Obafemi Awolowo University,Ile Ife,Osun",
+                "0601 - NGA_0601 - Silverbird Galleria, Abuja",
+                "0405 - NGA_0405 - Mogadishu Layout, Kaduna",
+                "0081 - NGA_0081 - Anaye Street, Odigbo LG. Ore, Ondo State",
+                "0235 - NGA_0235 - Bida-Zungeru Road, Wushishi, Niger",
+                "0129 - NGA_0129 - 10 Burka Abba Ibrahim Damaturu,Yobe",
+                "0426 - NGA_0426 - Mogadishu Cantonment, Asokoro,Abuja",
+                "0205 - NGA_0205 - Ibrahim Taiwo Rd N/Bussa, Niger",
+                "0351 - NGA_0351 - No.2 Canteen,Gusau, Zamfara",
+                "0472 - NGA_0472 - Court of Appeal Complex Shehu Shagari Way, Three Arms Zone, Abuja",
+                "0222 - NGA_0222 - 2 Sir Kas Ibrahim Rd Maiduguri, Borno",
+                "0333 - NGA_0333 - Dolphin Estate, Lagos",
+                "0186 - NGA_0186 - 10, Bank Rd Commercial Area, Bauchi",
+                "0133 - NGA_0133 - By Ashaka Cem Plc Gate, Gombe",
+                "0020 - NGA_0020 - 8, Baga Rd, Maiduguri, Borno",
+                "0526 - NGA_0526 - Ibrahim Taiwo Road, Offa, Kwara",
+                "0218 - NGA_0218 - Mei-Deribe Shopping Complex, Rano, Kano",
+                "0455 - NGA_0455 - Mutun Biyu, Taraba",
+                "0279 - NGA_0279 - 23, IBB Way, Katsina",
+                "0470 - NGA_0470 - Abuja Keffi Rd, Abuja",
+                "0119 - NGA_0119 - Monday Mkt Maiduguri, Borno",
+                "0323 - NGA_0323 - Ijan Essie Road, Essie, Kwara",
+                "0311 - NGA_0311 - Oke-Apake Area, Ogbomoso, Oyo",
+                "0163 - NGA_0163 - 24 Oba Akran Avenue, Ikeja, Lagos",
+                "0057 - NGA_0057 - 67,Tinubu St, Ita-Eko Abeokuta, Ogun",
+                "0496 - NGA_0496 - No 43, Monrovia Street, Wuse 2, Abuja",
+                "0504 - NGA_0504 - 34 Barde Way Turaki Ward Jalingo, Taraba",
+                "0292 - NGA_0292 - Geregu Camp, Ajaokuta, Kogi",
+                "0549 - NGA_0549 - 10 Zambezi Crescent WAEC Maitama, Abuja",
+                "0002 - NGA_0002 - 55, Marina Lagos Island, Lagos",
+                "0289 - NGA_0289 - Sharada Ind. Estate, Phase 1, Kano",
+                "0528 - NGA_0528 - Prestige Abuja Bank, Abuja",
+                "0136 - NGA_0136 - Ogudu GRA, Lagos",
+                "0030 - NGA_0030 - B1 Sultan Abubakar Rd B-Kebbi, Kebbi",
+                "0594 - NGA_0594 - Powa Plaza Business Office, Nyanya, Abuja",
+                "0117 - NGA_0117 - 35 Apapa Road, Ebute Metta, Lagos",
+                "0201 - NGA_0201 - 4, Court Road, Sapele, Delta",
+                "0513 - NGA_0513 - 169, Ibrahim Taiwo Road, Ilorin, Kwara",
+                "0196 - NGA_0196 - Lapai, Niger",
+                "0027 - NGA_0027 - 8, New Mkt Rd Off Biu Rd, Gombe",
+                "0610 - NGA_0610 - Idi Iroko Border, Ogun State",
+                "0395 - NGA_0395 - Sakponba Road Benin, Edo",
+                "0017 - NGA_0017 - 47 Murtala Mohammed Way, Jos, Plateau",
+                "0060 - NGA_0060 - 7A IBB Way Okene-Kaba Rd Lokoja, Kogi",
+                "0046 - NGA_0046 - 42 Galadima Aminu Way Jimeta, Yola, Adamawa",
+                "0151 - NGA_0151 - 7 Mission Rd, Uromi, Edo",
+                "0054 - NGA_0054 - Mtd8 Paiko Rd, Minna, Niger",
+                "0471 - NGA_0471 - Abuja Owena House, Abuja",
+                "0012 - NGA_0012 - 52, Adetokunbo Ademola Wuse II, Abuja",
+                "0268 - NGA_0268 - 39 Faskari St Area 3 Garki, Abuja",
+                "0624 - NGA_0624 - No 63 Gado Nasko Street Kubwa, Abuja",
+                "0388 - NGA_0388 - 14, Ogbomosho Road, Kaduna",
+                "0189 - NGA_0189 - 39 Effu-Sapele Rd Efurun, Delta",
+                "0259 - NGA_0259 - Market Square Oyan, Osun",
+                "0295 - NGA_0295 - 300 Ikorodu Rd, Anthony, Lagos",
+                "0583 - NGA_0583 - Lagos-Ibadan Expressway, Ibafo, Lagos",
+                "0325 - NGA_0325 - 171, Nnebisi Road, Asaba, Delta",
+                "0018 - NGA_0018 - 15 Calabar Road, Calabar, Cross River",
+                "0625 - NGA_0625 - Federal Housing Authority Lugbe, Abuja",
+                "0609 - NGA_0609 - Federal College of Education Osiele, Abeokuta, Ogun State",
+                "0517 - NGA_0517 - Canaanland Ota, Ogun",
+                "0284 - NGA_0284 - St Gregory Road Obalende, Lagos",
+                "0141 - NGA_0141 - Babcock Uni campus Ilisan Remo, Ogun state",
+                "0140 - NGA_0140 - Ojodu Bo, Plot 104 Isheri Rd",
+                "0629 - NGA_0629 - Sangotedo, Lekki Peninsula, Lagos",
+                "0096 - NGA_0096 - 22 Mobolaji Bank Anthony Ikeja, Lagos",
+                "0008 - NGA_0008 - 5, Obafemi Awolowo Way, Ibadan, Oyo",
+                "0413 - NGA_0413 - 176, Arakale Road Akure Ondo State",
+                "0473 - NGA_0473 - Oluwalogbon House Ikeja, Lagos",
+                "0164 - NGA_0164 - 15, Industrial Avenue, Ilupeju, Lagos",
+                "0617 - NGA_0617 - 18 Lagos Road, Epe Town, Lagos",
+                "0374 - NGA_0374 - 21A Acme Rd Ogba Ikeja, Lagos",
+                "0536 - NGA_0536 - University Of Ado-Ekiti, Ekiti",
+                "0494 - NGA_0494 - Seme Border",
+                "0518 - NGA_0518 - Balewa Road Opposite Inec Office, Ankpa, Kogi",
+                "0180 - NGA_0180 - 7 - 13 Aka Rd Uyo, Akwa-Ibom",
+                "0015 - NGA_0015 - 1A, Factory Road, Aba, Abia",
+                "0203 - NGA_0203 - 65 Warri-Sapele Rd Warri, Delta",
+                "0456 - NGA_0456 - Takum Business Office, Taraba",
+                "0182 - NGA_0182 - 11-13, Warehouse Road Apapa, Lagos",
+                "0086 - NGA_0086 - 15 Aggrey Road Port Harcourt",
+                "0176 - NGA_0176 - Beside Akwanga Ultra Modern Market,Lafia Road, Akwanga LGC, Nasarawa, Nigeria",
+                "0104 - NGA_0104 - 86B Olu Obasanjo Road, PH, Rivers",
+                "0369 - NGA_0369 - Atiku Abubakar Hall, Lagos",
+                "0072 - NGA_0072 - 27, Wharf Road Apapa, Lagos",
+                "0025 - NGA_0025 - 2, Nnamdi Azikiwe Avenue, Awka, Anambra",
+                "0099 - NGA_0099 - 218 Uselu-Lagos Road Ugbowo, Edo",
+                "0433 - NGA_0433 - 100, Textile Mill Rd, Benin, Edo",
+                "0354 - NGA_0354 - 1 Aguiyi Ironsi St Maitama, Abuja",
+                "0631 - NGA_0631 - Opposite Ohaozara LGA Secretariat Uburu, Ebonyi State",
+                "0346 - NGA_0346 - UBA House, 35 Broad Street, Lagos Island, Lagos",
+                "0110 - NGA_0110 - 13 Allen Avenue, Ikeja, Lagos",
+                "0171 - NGA_0171 - 58/60 Broad Street, Lagos",
+                "0392 - NGA_0392 - Sam Ethnan NAF Base Ikeja, Lagos",
+                "0056 - NGA_0056 - New Secretariat Rd, Ado-Ekiti",
+                "0400 - NGA_0400 - Gateway Plaza Zone A, Abuja",
+                "0588 - NGA_0588 - Imani Estate-Maitama, Abuja",
+                "0533 - NGA_0533 - 51, Ikosi Road, Ketu, Lagos",
+                "0608 - NGA_0608 - 61, Lagos Abeokuta Express way Otta Ogun",
+                "0170 - NGA_0170 - 172, Awolowo Road, Falomo, Ikoyi, Lagos",
+                "0424 - NGA_0424 - 23,Oke Arin Street, Lagos Island, Lagos",
+                "0383 - NGA_0383 - Akure-Ilesa Wy, Akure, Ondo",
+                "0514 - NGA_0514 - 42A UI/SEC Ro",
+                "0347 - NGA_0347 - 68 Western Avenue Rd, Surulere, Lagos",
+                "0364 - NGA_0364 - 72 Ajilosun St Ikere Rd Ado/Ek, Ekiti",
+                "0543 - NGA_0543 - 25/27A Charity Raod, New Oko-Aba Agege, Lagos",
+                "0497 - NGA_0497 - Plot 701 Usuma Maitama, Abuja",
+                "0382 - NGA_0382 - Ikoku Road Port Harcourt, Rivers",
+                "0553 - NGA_0553 - Ahoada Close Area 11, Abuja",
+                "0195 - NGA_0195 - Lebanon St Bank Road Dugbe Ibadan, Oyo",
+                "0007 - NGA_0007 - 17 Ereko Street Idumota Lagos",
+                "0520 - NGA_0520 - NASS-Senate, Abuja",
+                "0468 - NGA_0468 - Okota Business Office, Lagos",
+                "0453 - NGA_0453 - Redeemed Camp Bus. Office, Lagos",
+                "0542 - NGA_0542 - 50, Ijaiye Road, Ogba, Lagos",
+                "0621 - NGA_0621 - Adeti Street, Ilesa, Osun State",
+                "0168 - NGA_0168 - University Of Lagos, Akoka, Lagos",
+                "0348 - NGA_0348 - Odo Aro Quarters, Oyo",
+                "0376 - NGA_0376 - 9 Oremeji St Computer Village Ikeja, Lagos",
+                "0605 - NGA_0605 - Akute Business Office, Ogun",
+                "0194 - NGA_0194 - 91, Idiroko Rd Otta, Ogun",
+                "0349 - NGA_0349 - New-Gbagi Mkt, Gbagi, Ibadan, Oyo",
+                "0500 - NGA_0500 - 138 Oba Akran Ikeja, Lagos",
+                "0082 - NGA_0082 - Challenge-Molete Road, Ibadan, Oyo",
+                "0197 - NGA_0197 - Sw8-1137 Awolowo Rd Molete Ibadan, Oyo",
+                "0421 - NGA_0421 - 1,Simbiat Abiola Rd Ikeja, Lagos",
+                "0252 - NGA_0252 - C-O 16-17 Beach Road, Jos, Plateau",
+                "0375 - NGA_0375 - Ikota Shoping Cmplex VGC Lekki, Lagos",
+                "0043 - NGA_0043 - Aspamda Plaza Tradefair 2, Lagos",
+                "0178 - NGA_0178 - Opp.Osogbo City Hall, Osogbo, Osun",
+                "0562 - NGA_0562 - Nnamdi Azikiwe Airport, Abuja",
+                "0011 - NGA_0011 - 73, Allen Avenue, Ikeja, Lagos",
+                "0317 - NGA_0317 - Idi-Ape Junction Iwo Rd Ibadan, Oyo",
+                "0107 - NGA_0107 - 300, Wharf Road Apapa, Lagos",
+                "0074 - NGA_0074 - 2097 Herbert Macaulay Way Wuse4, Abuja",
+                "0286 - NGA_0286 - 59, Ibadan Rd, Ijebu-Ode, Ogun",
+                "0036 - NGA_0036 - 11B Akin Adesola St, Vi, Lagos",
+                "0556 - NGA_0556 - 96 Iju Road, Lagos",
+                "0353 - NGA_0353 - 1115 Adeola Odeku St Vi, Lagos",
+                "0632 - NGA_0632 - Ogo-Oluwa Area, Gbongan Road, Osogbo",
+                "0095 - NGA_0095 - 128 Isolo Rd, Mushin, Lagos",
+                "0091 - NGA_0091 - 147 Ladipo St Matori Mushin, Lagos",
+                "0499 - NGA_0499 - Apapa-Oshodi Expres. Berger, Lagos",
+                "0083 - NGA_0083 - Akowonjo-Egbeda Rd, Lagos",
+                "0577 - NGA_0577 - 241 Old Ipaja Road, Near NYSC, Iyana Ipaja, Lagos",
+                "0067 - NGA_0067 - 61 Iwo Road Ibadan, Oyo",
+                "0461 - NGA_0461 - 20A,Oshodi-Apapa Expressway, Lagos",
+                "0165 - NGA_0165 - 10 Causeway Ijora, Lagos",
+                "0477 - NGA_0477 - 26 Isheri Rd,Ojodu, Lagos",
+                "0297 - NGA_0297 - Lokoja-Kabba Rd, Odo-Ere, Kogi",
+                "0080 - NGA_0080 - 20 Bode Thomas St Surulere, Lagos",
+                "0633 - NGA_0633 - Lagere Road Ile Ife, Osun",
+                "0291 - NGA_0291 - Ilaro Rd Agbara Ind Est. Ogun",
+                "0402 - NGA_0402 - Oja Oba, Ilorin, Kwara",
+                "0575 - NGA_0575 - 101, Abeokuta Expressway Dopemu, Lagos",
+                "0356 - NGA_0356 - Elephant Cem Hse Alausa Ikeja, Lagos",
+                "0191 - NGA_0191 - 2 Ahmadu Bello Wy Sardauna LGA, Taraba",
+                "0111 - NGA_0111 - 4, Ali Akilu Road, Kaduna",
+                "0059 - NGA_0059 - Jos Road, Lafia, Nasarawa",
+                "0568 - NGA_0568 - 1B Niger Street, Kano",
+                "0145 - NGA_0145 - Nicon Luxury Plot 903, Tafawa Balewa Way, Area 11, Garki Abuja",
+                "0320 - NGA_0320 - Mallam Aminu Kano Intl Airport, Kano",
+                "0491 - NGA_0491 - 366, H/M Street, St Agnes Sabo, Yaba, Lagos",
+                "0272 - NGA_0272 - Yelwa Road, Shendam, Plateau",
+                "0224 - NGA_0224 - Gombi Rd, PMB 1501, Biu, Borno",
+                "0503 - NGA_0503 - 15B Post Office Rd, Kano",
+                "0379 - NGA_0379 - Plot 63 Uni Abuja Teaching Hospital Rd, Gwagwalada,Abuja",
+                "0013 - NGA_0013 - 37, New Market Road, Onitsha, Anambra",
+                "0227 - NGA_0227 - Along Bauchi-Kano Rd Ningi, Bauchi",
+                "0298 - NGA_0298 - Kontagora, Niger",
+                "0622 - NGA_0622 - Federal Housing Authority Kuje, Abuja",
+                "0159 - NGA_0159 - Alibro Atrium No. 32 Ekikunam Street Utako Abuja",
+                "0569 - NGA_0569 - Kabba, Kogi",
+                "0010 - NGA_0010 - 6, Okumagba Avenue, Warri, Delta",
+                "0009 - NGA_0009 - 1A, Ahmadu Bello Way, Kaduna",
+                "0368 - NGA_0368 - New Tyre Market Nkpor",
+                "0557 - NGA_0557 - 97 Isoko Road Ughelli, Delta",
+                "0121 - NGA_0121 - Ebe-Ano Housing Estate, Enugu",
+                "0238 - NGA_0238 - 10, Station Rd, Enugu, Enugu",
+                "0241 - NGA_0241 - 34, Douglas Road, Owerri, Imo",
+                "0123 - NGA_0123 - State Secretariat Buildng Awka, Anambra",
+                "0576 - NGA_0576 - Rumuokwuta Port Harcourt, Rivers",
+                "0321 - NGA_0321 - 146-148 Aba-Owerri Rd Aba, Abia",
+                "0254 - NGA_0254 - Orlu-Owerri Rd, Umuaka, Imo",
+                "0638 - NGA_0638 - Plot 40, Naze International Market, Owerri, Imo State",
+                "0075 - NGA_0075 - No 4, Okosisi Lane Nkpor, Anambra",
+                "0277 - NGA_0277 - University Of Nigeria, Enugu Campus, Enugu",
+                "0408 - NGA_0408 - 3A Bida Road Onitsha, Anambra",
+                "0293 - NGA_0293 - 68 Aba Rd, Umuahia, Abia",
+                "0618 - NGA_0618 - Addo Roundabout, along Addo � Badore Road, Ajah, Lagos",
+                "0234 - NGA_0234 - 14 Azikiwe Road, Port Harcourt, Rivers",
+                "0187 - NGA_0187 - 28, Otukpo Rd, Makurdi, Benue",
+                "0052 - NGA_0052 - Ogiri Oko Rd Opp CBN Makurdi, Benue",
+                "0169 - NGA_0169 - 10 Abebe Village Road, Iganmu, Lagos",
+                "0469 - NGA_0469 - Okokomaiko B/O, Lagos",
+                "0161 - NGA_0161 - 12-14 Broad Street, Lagos Island, Lagos",
+                "0253 - NGA_0253 - Paiko Road, Minna, Niger",
+                "0233 - NGA_0233 - 2 Suleiman Barau Rd Suleja, Abuja",
+                "0221 - NGA_0221 - Bayero University, Kano",
+                "0478 - NGA_0478 - 24 Idowu Taylor Str VI, Lagos",
+                "0239 - NGA_0239 - Km42 Abakalki Afikpo Rd Ebonyi",
+                "0068 - NGA_0068 - 133,Ejigbo Ikotun Rd,Ejigbo, Lagos",
+                "0124 - NGA_0124 - 30A PHC Rd Bridgehead Onitsha, Anambra",
+                "0315 - NGA_0315 - 47, Zik Avenue, Awka, Anambra",
+                "0596 - NGA_0596 - Station Road PH, Rivers",
+                "0301 - NGA_0301 - 53 Marina, Lagos",
+                "0545 - NGA_0545 - Ugwuagba Obosi, Anambra",
+                "0551 - NGA_0551 - 646 Ikwerre Road Rumuokoro, Rivers",
+                "0156 - NGA_0156 - 4, Mbari Street, Owerri, Imo",
+                "0539 - NGA_0539 - LASU Campus Ojo Town",
+                "0512 - NGA_0512 - 72, Effunrun Sapele Road, Warri, Delta",
+                "0023 - NGA_0023 - 6, Oraifite-Ogbufor Rd, Nnewi, Anambra",
+                "0326 - NGA_0326 - 143, Agbani Rd, Enugu, Enugu",
+                "0084 - NGA_0084 - 21 Faulks Road Aba, Abia",
+                "0381 - NGA_0381 - 312 PH-Aba Way, Rumukwurushi, Rivers",
+                "0422 - NGA_0422 - 20, Palm Avenue Mushin, Lagos",
+                "0352 - NGA_0352 - Ibekwe Road, Ikot Abasi, Akwa-Ibom",
+                "0313 - NGA_0313 - Ikirun-Ila Orangun Road. Iree, Osun",
+                "0090 - NGA_0090 - Road 1 LUTH Premises Idi Araba, Lagos",
+                "0639 - NGA_0639 - Plot 4, Elevate Commercial Park, Near Lagos Free Zone, Ibeju- Lekki, Lagos",
+                "0398 - NGA_0398 - 11 Adetokunbo Ademola Street Victoria Island, Lagos",
+                "0623 - NGA_0623 - Odogunyan Ikorodu",
+                "0149 - NGA_0149 - 80A Admiralty Way Lekki Phase1, Lagos",
+                "0641 - NGA_0641 - Ojoo, Ibadan Business Office, Oyo",
+                "0467 - NGA_0467 - Murtala Muhommed Airport, Lagos",
+                "0211 - NGA_0211 - Alagbaka Quarters, Akure, Ondo",
+                "0616 - NGA_0616 - 131T AM Dung Street, Dadin Kowa, Jos, Plateau State",
+                "0153 - NGA_0153 - UBA Pensions, 3rd Floor, 22B Idowu Taylor Street, V/Island, Lagos",
+                "0212 - NGA_0212 - 77D Ipogun Road, Ilaramokin, Ondo",
+                "0580 - NGA_0580 - Osun State College Of Education Ilesha",
+                "0127 - NGA_0127 - 261, Nnebisi Road, Asaba, Delta",
+                "0322 - NGA_0322 - Broad Street, Okitipupa, Ondo State",
+                "0073 - NGA_0073 - 37 Oba Akran Avenue, Ikeja, Lagos",
+                "0154 - NGA_0154 - Chevron Drive, Lekki Peninsula, Lagos",
+                "0584 - NGA_0584 - 51A Adeniyi Jones, Ikeja, Lagos",
+                "0414 - NGA_0414 - 81/83 Iwo Road Ibadan, Oyo",
+                "0167 - NGA_0167 - 43, Idumagbo Avenue, Lagos",
+                "0076 - NGA_0076 - Opp NNPC Depot Apata Ibadan",
+                "0032 - NGA_0032 - 21 Fatai Atere Road, Mushin, Lagos",
+                "0440 - NGA_0440 - 14 Js Tarka Rd Gboko, Benue",
+                "0240 - NGA_0240 - 40 New Mkt Rd Onitsha, Anambra",
+                "0420 - NGA_0420 - 21/23 Docemo Street Lagos Island, Lagos",
+                "0147 - NGA_0147 - Col Of Medicine UCH Ibadan, Oyo",
+                "0166 - NGA_0166 - 86 Murtala Muh Way Ebute-Metta, Lagos",
+                "0492 - NGA_0492 - Joseph Street Igbosere, Lagos",
+                "0615 - NGA_0615 - Ire-Akari Iyana Isolo, 142/146 Oshodi/Apapa Expressway Lagos",
+                "0423 - NGA_0423 - 81,Ojuelegba Rd Surulere, Lagos",
+                "0290 - NGA_0290 - 38, Murtala Mohammed Way, Kano",
+                "0515 - NGA_0515 - 21 Obun Eko Str. Idumota, Lagos",
+                "0071 - NGA_0071 - NNS Quorra Navy Compound Apapa, Lagos",
+                "0535 - NGA_0535 - Shell Industrial Area, Rumuomasi, Rivers",
+                "0139 - NGA_0139 - 191 Akarigbo Str. Sabo Sagamu, Ogun",
+                "0113 - NGA_0113 - 33 Issa William Str Okearin, Lagos",
+                "0574 - NGA_0574 - Fed Poly, Ilaro, Ogun",
+                "0109 - NGA_0109 - 28 Obun Eko Str Idumota, Lagos",
+                "0158 - NGA_0158 - 74 Ikotun-Idimu Rd Ikotun, Lagos",
+                "0126 - NGA_0126 - Rwangpam Street, Jos, Plateau",
+                "0620 - NGA_0620 - Adekunle Ajasin Univ, Campus, Akungba Akoko Ondo State",
+                "0098 - NGA_0098 - 11, Agbor Road, Benin, Edo",
+                "0524 - NGA_0524 - Woji Road, GRA, Port Harcourt, Rivers",
+                "0628 - NGA_0628 - Ebute Ipakodo Ikorodu, Lagos",
+                "0367 - NGA_0367 - 144 Nnamdi Azikiwe Str Idumota, Lagos",
+                "0058 - NGA_0058 - 21, Road Festac Area, Lagos",
+                "0044 - NGA_0044 - PPMC Area Complex Warri, Delta",
+                "0309 - NGA_0309 - Jarmai, Kanam LGC, Plateau",
+                "0172 - NGA_0172 - 56 Kudirat Abiola Way Oregun Ikeja, Lagos",
+                "0531 - NGA_0531 - 52, Upper Sakponba Road Benin, Edo",
+                "0619 - NGA_0619 - Awaye coker , Orile, Lagos",
+                "0636 - NGA_0636 - Law School Road Bwari, Abuja",
+                "0037 - NGA_0037 - Ogunlana Drive, Lagos",
+                "0572 - NGA_0572 - 16 Burma Road Apapa, Lagos",
+                "0363 - NGA_0363 - 3 Agudosi Str Alaba Intl Mkt, Lagos",
+                "0487 - NGA_0487 - 73,Ikwere Road, PH, Rivers",
+                "0064 - NGA_0064 - Apapa Oshodi Way Coconut B/Stop, Lagos",
+                "0444 - NGA_0444 - 55, Okpe Rd. Sapele, Delta",
+                "0457 - NGA_0457 - Wukari Business Office, Taraba",
+                "0173 - NGA_0173 - Abbi, Delta",
+                "0050 - NGA_0050 - Km 16 Kachia Road, NNPC Depot, Kaduna",
+                "0019 - NGA_0019 - 53, Okpara Avenue, Enugu",
+                "0265 - NGA_0265 - Uniport Shopping Complex PH, Rivers",
+                "0626 - NGA_0626 - Beside Akwanga Ultra Modern Market,Lafia Road, Nasarawa",
+                "0358 - NGA_0358 - Finima Road Bonny, Rivers",
+                "0255 - NGA_0255 - Oron- Mbo Road, Ebughu, Akwa-Ibom",
+                "0271 - NGA_0271 - 302 Uselu-Lagos Rd Ugbow Benin, Edo",
+                "0336 - NGA_0336 - Ohuhu Owo Oju LGA, Benue",
+                "0571 - NGA_0571 - Elelenwo Business Office GRA Port-Harcourt, Rivers",
+                "0328 - NGA_0328 - Issele-Uku,Old Lagos-Asaba Rd, Delta",
+                "0507 - NGA_0507 - 186 Mbiama Rd, Onupa Yenagoa, Bayelsa",
+                "0066 - NGA_0066 - 59 Old Rd Boji-Boji Owa Agbor, Delta",
+                "0522 - NGA_0522 - Oghara, Ajagbodudu Road Ogare Efe, Delta",
+                "0016 - NGA_0016 - 238, Nnebisi Road, Asaba, Delta",
+                "0262 - NGA_0262 - Owerri-Orlu Rd Nwaorieubi, Imo",
+                "0365 - NGA_0365 - Abraka Ere House Yenezue-Gene, Bayelsa",
+                "0411 - NGA_0411 - 14, Azikwe Road, Port-Harcourt, Rivers",
+                "0053 - NGA_0053 - 1, Factory Rd, Umuahia, Abia",
+                "0006 - NGA_0006 - 46, Warehouse Road Apapa, Lagos",
+                "0552 - NGA_0552 - Ministry Of Justice, Abuja",
+                "0102 - NGA_0102 - 19, Adeyemo Alakija Street, VI, Lagos",
+                "0089 - NGA_0089 - 123 Ojuelega Rd, Surulere, Lagos",
+                "0135 - NGA_0135 - 38 Ajayi Aina St Ifako Gbagada, Lagos",
+                "0484 - NGA_0484 - 3 Ogoja Road, Abakaliki, Ebonyi",
+                "0047 - NGA_0047 - 4B Ogoja Rd, Abakaliki, Ebonyi",
+                "0179 - NGA_0179 - 18 Okim Osabor St Ikom, Cross River",
+                "0243 - NGA_0243 - 9th Mile Corner",
+                "0564 - NGA_0564 - Market Road Junction North Bridge Makurdi, Benue",
+                "0385 - NGA_0385 - 25, Hammaruwa Way, Jalingo, Taraba",
+                "0273 - NGA_0273 - Katsina Ala Rd Zaki Biam",
+                "0248 - NGA_0248 - 14 Calabar Road, Calabar, Cross River",
+                "0120 - NGA_0120 - 34 Nwaniba Road Uyo, A.K.S",
+                "0559 - NGA_0559 - Petroleum Training Institute, Effurun, Delta",
+                "0236 - NGA_0236 - 4 Hospital Road Port Harcourt, Rivers",
+                "0578 - NGA_0578 - Rivers State Secretariat, Rivers",
+                "0412 - NGA_0412 - 144 Mbiama Yenagoa, Bayelsa",
+                "0390 - NGA_0390 - NAOC Premise Rumueme Mile4 PH, Rivers",
+                "0125 - NGA_0125 - 12 Calabar Road, Calabar, Cross River",
+                "0230 - NGA_0230 - Kutigi, Niger",
+                "0274 - NGA_0274 - Igumale Ado LGA, Benue",
+                "0308 - NGA_0308 - Mayo-Selbe Rd, Taraba",
+                "0003 - NGA_0003 - Plot 137 Olu Obasanjo Rd PH, Rivers",
+                "0361 - NGA_0361 - 3A Cemetry Rd Eziukwu Mkt Aba, Abia",
+                "0544 - NGA_0544 - Refinery Road, Eleme, Rivers",
+                "0384 - NGA_0384 - 3 Assumpta Avenue, Owerri, Imo",
+                "0193 - NGA_0193 - Ogbete Main Market, Enugu",
+                "0581 - NGA_0581 - Electronics Market Onitsha, Anambra",
+                "0466 - NGA_0466 - 2nd Avenue, Navy Town, Ojo, Lagos",
+                "0436 - NGA_0436 - Obajana, Kogi",
+                "0407 - NGA_0407 - 49 Uga Street Bridge Head Onitsha, Anambra",
+                "0464 - NGA_0464 - 399 Agbani Road Gariki, Enugu",
+                "0523 - NGA_0523 - Nnamdi Azikiwe University Awka, Anambra",
+                "0399 - NGA_0399 - 49 Nike Lake Resort Rd, Enugu",
+                "0409 - NGA_0409 - 31 Asa Road Aba, Abia",
+                "0606 - NGA_0606 - 44A Govt Station Road Orlu, Imo",
+                "0130 - NGA_0130 - 20 Okpara Avenue, Enugu",
+                "0031 - NGA_0031 - 60, Wetheral Rd, Owerri, Imo",
+                "0587 - NGA_0587 - Aminu Kano, Abuja",
+                "0600 - NGA_0600 - NNPC, Abuja",
+                "0105 - NGA_0105 - 9, Okigwe Road, Aba, Abia",
+                "0391 - NGA_0391 - Mobil House, Lagos",
+                "0371 - NGA_0371 -  Iponri, Lagos",
+                "0519 - NGA_0519 - Relief-Market 267 Obodo-Ukwu Rd, Anambra",
+                "0377 - NGA_0377 - Enugu-Onitsha Exp Ogidi, Anambra",
+                "0486 - NGA_0486 - 20, Trans Amadi, PH, Rivers",
+                "0213 - NGA_0213 - Zonkwa, Kaduna",
+                "0267 - NGA_0267 - 22 Edo-Ezemewi Rd Nnewi2, Anambra",
+                "0114 - NGA_0114 - 8B New Mkt Rd, Onitsha, Anambra",
+                "0534 - NGA_0534 - Independence Layout, Enugu",
+                "0014 - NGA_0014 - 81, Akpakpava Road, Benin, Edo",
+                "0100 - NGA_0100 - 100, Sapele Road, Benin, Edo",
+                "0237 - NGA_0237 - 94 Trans Amadi Ind. Layout PH, Rivers",
+                "0246 - NGA_0246 - PHC- Owerri Rd, Isiokpo Ikwerre LGA, Rivers",
+                "0339 - NGA_0339 - Eke-Ahiara Mbaise",
+                "0607 - NGA_0607 - Federal University Otuoke, Bayelsa",
+                "0079 - NGA_0079 - 134 Upper Mission Rd Benin, Edo",
+                "0065 - NGA_0065 - 36, Kenyetta Str, Uwani, Enugu",
+                "0038 - NGA_0038 - 16 PHC Rd, Bridgehead, Onitsha, Anambra",
+                "0327 - NGA_0327 - Ukpor, Nnewi South LGA, Anambra",
+                "0281 - NGA_0281 - 4 Wharf Road, Lokoja, Kogi",
+                "0441 - NGA_0441 - 1,Commercial Rd Opp Texaco, Makurdi, Benue",
+                "0509 - NGA_0509 - 147 Trans-Amadi PH, Rivers",
+                "0510 - NGA_0510 - Motorcycle Spare Part, Nnewi, Anambra",
+                "0294 - NGA_0294 - 56 Ph Rd Bridgehead Onitsha, Anambra",
+                "0257 - NGA_0257 - Near Akukutoru LGA, Abonnema, Rivers",
+                "0635 - NGA_0635 -  Okpanam Road, Asaba, Delta",
+                "0299 - NGA_0299 - 354 New Ogorode Industrial Estate, Sapele, Delta",
+                "0443 - NGA_0443 - Rivers State University PH, Rivers",
+                "0278 - NGA_0278 - 73 Ahoada Rd, Omoku, Rivers",
+                "0378 - NGA_0378 - 96B Iweka Rd Onitsha, Anambra",
+                "0599 - NGA_0599 - Pankshin, Plateau",
+                "0525 - NGA_0525 - Old Agbor Rd,Ekrejeta Abraka, Delta",
+                "0312 - NGA_0312 - 146-148 Aba-Owerri Rd Aba Abia",
+                "0613 - NGA_0613 - Akwa Ibom - ExxonMobil QIT, Ibeno",
+                "0144 - NGA_0144 - 66 Lawanson Rd Itire, Surulere, Lagos",
+                "0637 - NGA_0637 - PH Road New Owerri, Owerri West LGA, Imo State",
+                "0258 - NGA_0258 - Ekwulobia Rd, Agulu, Anambra",
+                "0005 - NGA_0005 - 810-811 Bank Road Daleko, Mushin, Lagos"
+            ]
+            
+            sol_choice = st.selectbox("Select SOL ID", sol_options)
+            
+            # Extract SOL ID and office name from selection
+            sol_id = sol_choice.split(" - ")[0]
+            office_name = sol_choice.split(" - ")[1]
+            
+            responsible_party = st.text_input("Responsible Party (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            
+            # Password option
+            password_option = st.radio(
+                "Password Option:",
+                ["Use Default Password", "Set Custom Password"],
+                index=0
+            )
+            
+            if password_option == "Set Custom Password":
+                custom_password = st.text_input("Custom Password", type="password")
+                password_feedback = st.empty()
+                
+                def validate_password(pw):
+                    if len(pw) < 10:
+                        return False, "❌ Password must be at least 10 characters long."
+                    if not pw[0].isupper():
+                        return False, "❌ First letter must be capital."
+                    if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                        return False, "❌ Remaining characters must be lowercase letters or numbers."
+                    return True, "✅ Password meets all criteria."
+                
+                if custom_password:
+                    valid, msg = validate_password(custom_password)
+                    if valid:
+                        password_feedback.success(msg)
+                    else:
+                        password_feedback.error(msg)
             else:
-                st.warning("SOL list empty or not found.")
-                sol_choice, street_address = "", ""
-
-            st.markdown("---")
-            if existing_df is None:
-                st.warning("No existing users file loaded. Employee IDs will start at CON10001.")
-            else:
-                st.info(f"Loaded existing users ({len(existing_df)} rows). Using their Employee IDs to continue CON series.")
+                custom_password = "VendorPass123"  # Default password
         
-        session_empids = [u["employeeID"] for u in st.session_state["vendor_new_users"]]
-        next_emp_preview = get_next_con(existing_df, session_empids)
-        st.info(f"Next available Employee ID: **{next_emp_preview}**")
-        
-        # Password validation
-        pw_ok = True
-        if password:
-            pw_ok, pw_msg = validate_password(password, first_name, surname)
-            st.success(pw_msg) if pw_ok else st.error(pw_msg)
+        # Responsible party info display
+        if existing_df is not None and responsible_party:
+            email_col = None
+            for col in existing_df.columns:
+                if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                    email_col = col
+                    break
+            
+            if email_col:
+                staff_row = existing_df[existing_df[email_col].str.lower() == responsible_party.lower()]
+                if not staff_row.empty:
+                    staff_row = staff_row.iloc[0]
+                    staff_name = staff_row.get("displayName", staff_row.get("name", ""))
+                    staff_emp_id = staff_row.get("Employee ID", staff_row.get("employeeID", ""))
+                    staff_dept = staff_row.get("Department", "")
+                    st.info(f"Responsible Party: {staff_name} / {staff_emp_id} / {staff_dept}")
+                else:
+                    st.warning(f"Responsible party {responsible_party} not found in existing users")
         
         # Add User button
         if st.button("➕ Add User", key="vendor_add"):
-            required = [first_name, surname, job_title, department, sol_choice, password, staff_email]
+            required = [first_name, last_name, job_role, phone_number, staff_id, sol_id, responsible_party]
             if not all(required):
                 st.error("Please fill all required fields.")
-            elif not pw_ok:
-                st.error("Password invalid.")
+            elif password_option == "Set Custom Password" and (not custom_password or not validate_password(custom_password)[0]):
+                st.error("Please provide a valid custom password.")
             else:
-                emp_id = get_next_con(existing_df, session_empids)
-                username = make_username(first_name, surname)
-                display_name = f"{first_name} {surname}".strip()
-                description = f"{emp_id}.....Responsible party to the Account is {staff_email} / {emp_id} / {department}"
-
+                # Generate username
+                username = make_username(first_name, last_name)
+                display_name = f"{first_name} {last_name}".strip()
+                
+                # Get responsible party info
+                staff_name = ""
+                staff_emp_id = ""
+                staff_dept = ""
+                
+                if existing_df is not None:
+                    email_col = None
+                    for col in existing_df.columns:
+                        if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                            email_col = col
+                            break
+                    
+                    if email_col:
+                        staff_row = existing_df[existing_df[email_col].str.lower() == responsible_party.lower()]
+                        if not staff_row.empty:
+                            staff_row = staff_row.iloc[0]
+                            staff_name = staff_row.get("displayName", staff_row.get("name", ""))
+                            staff_emp_id = staff_row.get("Employee ID", staff_row.get("employeeID", ""))
+                            staff_dept = staff_row.get("Department", "")
+                
+                # Create description based on account type
+                if account_type == "Vendor Account":
+                    description = f"{staff_id}-------Responsible party to the Account is {staff_name} / {staff_emp_id} / {staff_dept}"
+                else:  # Single User Account
+                    description = staff_id
+                
+                # Map department using job role
+                department = clean_department("", job_role, title_dept_mapping)
+                
+                # Get SOL info
+                street_address = office_name
+                
+                # Create record
                 record = {
                     "givenName": first_name,
-                    "sn": surname,
+                    "sn": last_name,
                     "userPrincipalName": username,
                     "displayName": display_name,
                     "description": description,
-                    "title": job_title,
+                    "title": job_role,
                     "department": department,
                     "sAMAccountName": username,
-                    "physicalDeliveryOfficeName": sol_choice,
+                    "physicalDeliveryOfficeName": office_name,
                     "streetAddress": street_address,
-                    "telephoneNumber": phone,
+                    "telephoneNumber": format_phone(phone_number),
                     "name": display_name,
                     "mail": username,
-                    "company": CONSTANTS["company"],
-                    "co": CONSTANTS["co"],
-                    "mobile": phone,
-                    "OUName": CONSTANTS["OUName"],
-                    "homeMDB": CONSTANTS["homeMDB"],
-                    "msExchOmaAdminWirelessEnable": CONSTANTS["msExchOmaAdminWirelessEnable"],
-                    "msExchHomeServerName": CONSTANTS["msExchHomeServerName"],
+                    "company": FIXED_FIELDS["company"],
+                    "co": FIXED_FIELDS["co"],
+                    "mobile": format_phone(phone_number),
+                    "OUName": FIXED_FIELDS["OUName"],
+                    "homeMDB": FIXED_FIELDS["homeMDB"],
+                    "msExchOmaAdminWirelessEnable": FIXED_FIELDS["msExchOmaAdminWirelessEnable"],
+                    "msExchHomeServerName": FIXED_FIELDS["msExchHomeServerName"],
                     "mailNickName": username,
-                    "memberOf": CONSTANTS["memberOf"],
-                    "employeeID": emp_id,
-                    "password": password,
+                    "memberOf": FIXED_FIELDS["memberOf"],
+                    "employeeID": staff_id,
+                    "password": custom_password,
                     "displayNamePrintable": display_name,
-                    "pwdLastSet": CONSTANTS["pwdLastSet"]
+                    "pwdLastSet": FIXED_FIELDS["pwdLastSet"]
                 }
 
                 st.session_state["vendor_new_users"].append(record)
-                st.success(f"Added {display_name} (Employee ID: {emp_id})")
+                st.success(f"Added {display_name} (Username: {username})")
         
         # Preview & Export
         st.markdown("---")
@@ -1399,7 +1932,7 @@ VALUES
             if st.button("↩️ Remove Last", key="vendor_remove"):
                 if st.session_state["vendor_new_users"]:
                     removed = st.session_state["vendor_new_users"].pop()
-                    st.warning(f"Removed {removed['displayName']} (Employee ID: {removed['employeeID']})")
+                    st.warning(f"Removed {removed['displayName']} (Username: {removed['userPrincipalName']})")
         with c2:
             if st.button("🧹 Clear All", key="vendor_clear"):
                 st.session_state["vendor_new_users"] = []
