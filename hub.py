@@ -267,8 +267,15 @@ else:
         return " ".join([w.upper() if w.upper() in ABBREVIATIONS else w.capitalize() for w in str(text).split()])
 
     def clean_sol(sol_val):
-        try: sol=str(sol_val).split(".")[0]; return sol.zfill(4) if sol.isdigit() else None
-        except: return None
+        """Clean SOL ID - remove non-digits and pad to 4 digits"""
+        try: 
+            sol = str(sol_val).split(".")[0].strip()
+            # Remove any non-digit characters
+            sol = re.sub(r'\D', '', sol)
+            # Pad with leading zeros to make it 4 digits
+            return sol.zfill(4) if sol.isdigit() else None
+        except: 
+            return None
 
     def format_phone(phone):
         """Format phone with Excel-friendly leading single quote to preserve + sign"""
@@ -288,7 +295,7 @@ else:
         return f"'{formatted}"
 
     def build_title_department_mapping(existing_df):
-        """Build a mapping of job titles to departments from existing users data"""
+        """Build a smart mapping of job titles to departments from existing users data"""
         # Find the correct column names for title and department
         title_col = None
         dept_col = None
@@ -309,8 +316,8 @@ else:
             st.warning("Could not find title or department columns in existing users file")
             return {}
         
-        # Create the mapping
-        mapping = {}
+        # Create a count of departments for each title
+        title_dept_counts = {}
         for _, row in existing_df.iterrows():
             title = str(row[title_col]).strip().lower()
             dept = str(row[dept_col]).strip()
@@ -318,12 +325,26 @@ else:
             if title and title != "nan" and dept and dept != "nan":
                 # Use proper case for department
                 dept = proper_case(dept)
-                mapping[title] = dept
+                
+                if title not in title_dept_counts:
+                    title_dept_counts[title] = {}
+                
+                if dept not in title_dept_counts[title]:
+                    title_dept_counts[title][dept] = 0
+                
+                title_dept_counts[title][dept] += 1
+        
+        # Create the mapping by selecting the most frequent department for each title
+        mapping = {}
+        for title, dept_counts in title_dept_counts.items():
+            # Find the department with the highest count
+            most_common_dept = max(dept_counts.items(), key=lambda x: x[1])[0]
+            mapping[title] = most_common_dept
         
         return mapping
 
     def clean_department(dept_val, role_val, title_dept_mapping):
-        """Clean department value using title-department mapping from existing users"""
+        """Clean department value using smart title-department mapping from existing users"""
         role = proper_case(role_val)
         
         # First check if we have a valid department in the HR file
@@ -451,16 +472,28 @@ else:
                             existing_sam = set(existing["SAM Account Name"].str.lower().dropna())
                             existing_staff_ids = set(existing["Employee ID"].dropna().astype(str))
                             
-                            sol_dict = {str(r["SOL ID"]).split(".")[0].zfill(4): (
-                                            str(r.get("physicalDevliveryOfficeName", "N/A")),
-                                            str(r.get("streetAddress", "N/A"))
-                                        ) for _, r in solmap.iterrows()}
+                            # Build SOL dictionary with proper key cleaning
+                            sol_dict = {}
+                            for _, r in solmap.iterrows():
+                                # Clean the SOL ID from the mapping file
+                                sol_key = clean_sol(r.get("SOL ID", ""))
+                                if sol_key:
+                                    sol_dict[sol_key] = (
+                                        str(r.get("physicalDevliveryOfficeName", "N/A")),
+                                        str(r.get("streetAddress", "N/A"))
+                                    )
                             
                             # Build title-department mapping from existing users
                             title_dept_mapping = build_title_department_mapping(existing)
                             
                             if title_dept_mapping:
                                 st.success(f"✅ Built department mapping for {len(title_dept_mapping)} unique job titles")
+                                
+                                # Show some sample mappings for verification
+                                with st.expander("📋 Sample Title-Department Mappings"):
+                                    sample_mappings = list(title_dept_mapping.items())[:10]
+                                    for title, dept in sample_mappings:
+                                        st.write(f"- **{title}**: {dept}")
                             else:
                                 st.warning("⚠️ Could not build department mapping from existing users")
                             
@@ -514,7 +547,14 @@ else:
                                     skipped.append({"Staff ID": staff_id, "Reason": fail_reason})
                                     continue
                                 
-                                office, address = sol_dict.get(sol_id, ("N/A","N/A"))
+                                # Fixed: Proper SOL lookup
+                                if sol_id and sol_id in sol_dict:
+                                    office, address = sol_dict[sol_id]
+                                else:
+                                    office, address = "N/A", "N/A"
+                                    if sol_id:
+                                        skipped.append({"Staff ID": staff_id, "Reason": f"SOL ID {sol_id} not found in mapping"})
+                                
                                 display_name = f"{given_name.title()} {lname}".strip()
                                 
                                 output.append({
@@ -594,7 +634,7 @@ else:
             if st.session_state['ad_output']:
                 st.markdown("#### 👥 Created Users Preview")
                 output_df = pd.DataFrame(st.session_state['ad_output'])
-                st.dataframe(output_df[['givenName', 'sn', 'userPrincipalName', 'employeeID', 'department']].head(10), use_container_width=True)
+                st.dataframe(output_df[['givenName', 'sn', 'userPrincipalName', 'employeeID', 'department', 'physicalDeliveryOfficeName']].head(10), use_container_width=True)
             
             # Skipped users
             if st.session_state['ad_skipped']:
