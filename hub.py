@@ -8,30 +8,6 @@ from datetime import datetime
 from pathlib import Path
 import numpy as np
 
-# -----------------------------
-# Department Mapping Upload
-# -----------------------------
-with st.sidebar:
-    st.markdown("### 🧭 Department Mapping (Optional)")
-    dept_map_file = st.file_uploader("Upload JobTitle–Department Map", type=['xlsx'], key="dept_map")
-
-# Load the mapping if provided
-JOB_TO_DEPT_MAP = {}
-
-if dept_map_file:
-    try:
-        map_df = pd.read_excel(dept_map_file)
-        JOB_TO_DEPT_MAP = {
-    str(row["Title"]).strip().lower(): str(row["Department"]).strip()
-    for _, row in map_df.iterrows()
-        }
-        st.sidebar.success(f"✅ Loaded {len(JOB_TO_DEPT_MAP)} mappings.")
-    except Exception as e:
-        st.sidebar.error(f"❌ Error reading mapping file: {e}")
-else:
-    st.sidebar.info("Using default department mapping.")
-
-
 # Configure page
 st.set_page_config(
     page_title="ITCare Hub",
