@@ -255,7 +255,7 @@ else:
 
         return df[expected_cols]
 
-    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
+    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD", "PSG", "ESRM"}
 
     def normalize_name(name: str, case="title"):
         if not name or str(name).lower() == "nan": return ""
@@ -278,7 +278,6 @@ else:
             return None
 
     def format_phone(phone):
-        """Format phone with Excel-friendly leading single quote to preserve + sign"""
         phone = str(phone).split(".")[0].strip().replace(" ","").replace("-","")
         formatted = "N/A"
         
@@ -292,10 +291,9 @@ else:
             formatted = "+234-"+phone
         
         # Add single quote prefix to preserve + in Excel
-        return f"'{formatted}"
+        return f"{formatted}"
 
     def build_title_department_mapping(existing_df):
-        """Build a smart mapping of job titles to departments from existing users data"""
         # Find the correct column names for title and department
         title_col = None
         dept_col = None
@@ -344,7 +342,6 @@ else:
         return mapping
 
     def clean_department(dept_val, role_val, title_dept_mapping):
-        """Clean department value using smart title-department mapping from existing users"""
         role = proper_case(role_val)
         
         # First check if we have a valid department in the HR file
