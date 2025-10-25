@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import time
@@ -210,7 +209,6 @@ else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
 
     # AD Bulk Creator Functions
-       # ✅ Corrected normalize_hr_file
     def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
         """Normalize HR file column names — handles variations automatically"""
         column_map = {
@@ -276,12 +274,63 @@ else:
             formatted = "+234-"+phone
         
         # Add single quote prefix to preserve + in Excel
-        return f"{formatted}"
+        return f"'{formatted}"
 
-    def clean_department(dept_val, role_val):
-        if str(role_val).strip().lower()=="direct sales executive": return "Marketing"
+    def build_title_department_mapping(existing_df):
+        """Build a mapping of job titles to departments from existing users data"""
+        # Find the correct column names for title and department
+        title_col = None
+        dept_col = None
+        
+        # Try to find title column
+        for col in existing_df.columns:
+            if "title" in col.lower() or "role" in col.lower() or "position" in col.lower():
+                title_col = col
+                break
+        
+        # Try to find department column
+        for col in existing_df.columns:
+            if "department" in col.lower() or "dept" in col.lower() or "unit" in col.lower():
+                dept_col = col
+                break
+        
+        if title_col is None or dept_col is None:
+            st.warning("Could not find title or department columns in existing users file")
+            return {}
+        
+        # Create the mapping
+        mapping = {}
+        for _, row in existing_df.iterrows():
+            title = str(row[title_col]).strip().lower()
+            dept = str(row[dept_col]).strip()
+            
+            if title and title != "nan" and dept and dept != "nan":
+                # Use proper case for department
+                dept = proper_case(dept)
+                mapping[title] = dept
+        
+        return mapping
+
+    def clean_department(dept_val, role_val, title_dept_mapping):
+        """Clean department value using title-department mapping from existing users"""
+        role = proper_case(role_val)
+        
+        # First check if we have a valid department in the HR file
         dept = proper_case(dept_val)
-        return dept if dept!="N/A" else proper_case(role_val)
+        if dept != "N/A":
+            return dept
+        
+        # If no valid department, try to map using the title
+        role_lower = str(role_val).strip().lower()
+        if role_lower in title_dept_mapping:
+            return title_dept_mapping[role_lower]
+        
+        # Special case handling
+        if role_lower == "direct sales executive":
+            return "Marketing"
+        
+        # If no mapping found, use the role as department
+        return role if role != "N/A" else "General"
 
     def choose_upn(fname, mname, lname, existing_sam):
         reasons=[]
@@ -362,6 +411,14 @@ else:
                                             str(r.get("streetAddress", "N/A"))
                                         ) for _, r in solmap.iterrows()}
                             
+                            # Build title-department mapping from existing users
+                            title_dept_mapping = build_title_department_mapping(existing)
+                            
+                            if title_dept_mapping:
+                                st.success(f"✅ Built department mapping for {len(title_dept_mapping)} unique job titles")
+                            else:
+                                st.warning("⚠️ Could not build department mapping from existing users")
+                            
                             # Process HR input
                             output, skipped = [], []
                             
@@ -396,7 +453,7 @@ else:
                                     continue
                                 
                                 role = proper_case(row["ROLE"])
-                                department = clean_department(row.get("DEPARTMENT",""), role)
+                                department = clean_department(row.get("DEPARTMENT",""), row["ROLE"], title_dept_mapping)
                                 sol_id = clean_sol(row["SOL ID"])
                                 phone = format_phone(row["PHONE NUMBER"])  # Excel-friendly format
                                 
@@ -451,6 +508,7 @@ else:
                             st.session_state['ad_skipped'] = skipped
                             st.session_state['ad_hr'] = hr
                             st.session_state['ad_execution_time'] = execution_time
+                            st.session_state['ad_title_dept_mapping'] = title_dept_mapping
                             
                             st.success(f"✅ Processing completed in {execution_time}s!")
                             
@@ -496,9 +554,21 @@ else:
                 skipped_df = pd.DataFrame(st.session_state['ad_skipped'])
                 st.dataframe(skipped_df, use_container_width=True)
             
+            # Department mapping info
+            if 'ad_title_dept_mapping' in st.session_state and st.session_state['ad_title_dept_mapping']:
+                st.markdown("#### 📋 Title-Department Mapping Used")
+                mapping_df = pd.DataFrame([
+                    {"Title": title, "Department": dept} 
+                    for title, dept in st.session_state['ad_title_dept_mapping'].items()
+                ])
+                st.dataframe(mapping_df.head(10), use_container_width=True)
+                
+                if len(mapping_df) > 10:
+                    st.info(f"Showing first 10 of {len(mapping_df)} mappings. All mappings were used during processing.")
+            
             # Download section
             st.markdown("### 📥 Download Files")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 if st.session_state['ad_output']:
@@ -589,6 +659,23 @@ else:
                         data=html_content,
                         file_name=f"ad_bulk_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                         mime="text/html",
+                        use_container_width=True
+                    )
+            
+            with col4:
+                if 'ad_title_dept_mapping' in st.session_state and st.session_state['ad_title_dept_mapping']:
+                    # Title-Department mapping CSV download
+                    mapping_csv_buffer = io.StringIO()
+                    mapping_df = pd.DataFrame([
+                        {"Title": title, "Department": dept} 
+                        for title, dept in st.session_state['ad_title_dept_mapping'].items()
+                    ])
+                    mapping_df.to_csv(mapping_csv_buffer, index=False)
+                    st.download_button(
+                        label="📋 Download Mapping CSV",
+                        data=mapping_csv_buffer.getvalue(),
+                        file_name=f"title_department_mapping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
                         use_container_width=True
                     )
             
