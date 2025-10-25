@@ -339,9 +339,11 @@ else:
         # Special case handling
         if role_lower == "direct sales executive":
             return "Marketing"
+        elif role_lower == "relationship officer":
+            return "Marketing"
         
         # If no mapping found, use the role as department
-        return role if role != "N/A" else "General"
+        return role if role != "N/A" else ""
 
     def choose_upn(fname, mname, lname, existing_sam):
         reasons=[]
