@@ -3,9 +3,11 @@ import pandas as pd
 import time
 import io
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 import numpy as np
+from io import BytesIO
 
 # Configure page
 st.set_page_config(
@@ -197,7 +199,8 @@ else:
         st.markdown("### 🔧 Tool Selection")
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator", "📧 Generic Email Creator", 
+             "🔧 Service Email Creator", "🏦 Vendor Creator", "📤 Exit File Converter"],
             index=0
         )
         
@@ -205,8 +208,16 @@ else:
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
             st.info("Creates Active Directory users from HR Excel files.")
-        else:
+        elif "GRP Script" in selected_tool:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
+        elif "Generic Email" in selected_tool:
+            st.info("Creates generic email accounts for specific purposes.")
+        elif "Service Email" in selected_tool:
+            st.info("Creates service email accounts for applications.")
+        elif "Vendor Creator" in selected_tool:
+            st.info("Creates vendor accounts with manual entry.")
+        elif "Exit File" in selected_tool:
+            st.info("Converts exit portal files to the required template format.")
 
     # AD Bulk Creator Functions
     def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
@@ -376,8 +387,40 @@ else:
         with col2:
             st.markdown("### ⚡ Execution")
             
+            # Password option
+            password_option = st.radio(
+                "Password Option:",
+                ["Use Default Password", "Set Custom Password"],
+                index=0
+            )
+            
+            if password_option == "Set Custom Password":
+                custom_password = st.text_input("Custom Password", type="password")
+                password_feedback = st.empty()
+                
+                def validate_password(pw):
+                    if len(pw) < 10:
+                        return False, "❌ Password must be at least 10 characters long."
+                    if not pw[0].isupper():
+                        return False, "❌ First letter must be capital."
+                    if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                        return False, "❌ Remaining characters must be lowercase letters or numbers."
+                    return True, "✅ Password meets all criteria."
+                
+                if custom_password:
+                    valid, msg = validate_password(custom_password)
+                    if valid:
+                        password_feedback.success(msg)
+                    else:
+                        password_feedback.error(msg)
+            
             if st.button("🚀 Process Files", type="primary", use_container_width=True):
                 if hr_file and existing_file and sol_file:
+                    # Validate custom password if selected
+                    if password_option == "Set Custom Password" and (not custom_password or not validate_password(custom_password)[0]):
+                        st.error("Please provide a valid custom password")
+                        st.stop()
+                    
                     start_time = time.time()
                     
                     with st.spinner("Processing files..."):
@@ -431,6 +474,9 @@ else:
                                 "memberOf": "All Staff Nigeria;UBAMicrosoftCloud;NG_Normal",
                                 "pwdLastSet": "0"
                             }
+                            
+                            # Determine password to use
+                            final_password = custom_password if password_option == "Set Custom Password" else "Developer2378"
                             
                             for _, row in hr.iterrows():
                                 staff_id = str(row["STAFF ID"]).strip().upper()
@@ -493,7 +539,7 @@ else:
                                     "mailNickName": base_upn,
                                     "memberOf": FIXED_FIELDS["memberOf"],
                                     "employeeID": staff_id,
-                                    "password": "Developer2378",
+                                    "password": final_password,
                                     "displayNamePrintable": display_name,
                                     "pwdLastSet": FIXED_FIELDS["pwdLastSet"]
                                 })
@@ -606,9 +652,11 @@ else:
             
             with col3:
                 if st.session_state['ad_output'] or st.session_state['ad_skipped']:
-                    # HTML report
+                    # HTML report with conditional skipped users section
                     html_content = "<html><body>"
-                    if len (st.session_state['ad_output']) > 1:
+                    
+                    # Created users section
+                    if len(st.session_state['ad_output']) > 1:
                         html_content += "<p><b>Users have been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
@@ -617,8 +665,7 @@ else:
                             html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
                         html_content += "</table>"
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
-
-                    else:
+                    elif len(st.session_state['ad_output']) == 1:
                         html_content += "<p><b>User has been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
@@ -628,29 +675,30 @@ else:
                         html_content += "</table>"
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
                     
-                    if len (st.session_state['ad_skipped']) > 1:
-                        html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
-                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
-                        for s in st.session_state['ad_skipped']:
-                            staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
-                            if not staff.empty:
-                                staff = staff.iloc[0]
-                                html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
-                        html_content += "</table>"
-                        html_content += "<p>Please review the above errors and revert.</p>"
-
-                    else:
-                        html_content += "<p><b>However, the below user was not created due to error below:</b></p>"
-                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
-                        for s in st.session_state['ad_skipped']:
-                            staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
-                            if not staff.empty:
-                                staff = staff.iloc[0]
-                                html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
-                        html_content += "</table>"
-                        html_content += "<p>Please review the above error and revert.</p>"
+                    # Skipped users section - only show if there are skipped users
+                    if st.session_state['ad_skipped']:
+                        if len(st.session_state['ad_skipped']) > 1:
+                            html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
+                            html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                            html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
+                            for s in st.session_state['ad_skipped']:
+                                staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
+                                if not staff.empty:
+                                    staff = staff.iloc[0]
+                                    html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
+                            html_content += "</table>"
+                            html_content += "<p>Please review the above errors and revert.</p>"
+                        else:
+                            html_content += "<p><b>However, the below user was not created due to error below:</b></p>"
+                            html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                            html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
+                            for s in st.session_state['ad_skipped']:
+                                staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
+                                if not staff.empty:
+                                    staff = staff.iloc[0]
+                                    html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
+                            html_content += "</table>"
+                            html_content += "<p>Please review the above error and revert.</p>"
                     
                     html_content += "</body></html>"
                     
@@ -683,7 +731,7 @@ else:
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
-    else:  # GRP Script Generator
+    elif "GRP Script" in selected_tool:
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
@@ -794,6 +842,648 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
+
+    elif "Generic Email" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>📧 Generic Email Creator</h2></div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; color:gray;'>Create and export generic email accounts effortlessly</p>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Input fields
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            generic_email_full = st.text_input("📧 Generic Email ID (e.g., generictestmail@ubagroup.com)").strip()
+            display_name = st.text_input("📝 Generic Display Name (e.g., Generic Test Mail)").strip()
+            staff_name = st.text_input("👤 Name of Staff (e.g., Emmanuel Imafidon)").strip()
+        
+        with col2:
+            staff_email = st.text_input("📧 Staff Email Address (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            password = st.text_input("🔒 Password for the generic account", type="password").strip()
+            password_feedback = st.empty()
+            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
+        
+        def validate_password(pw, generic_email_full, display_name, staff_email):
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+            
+            # Check if password contains parts of any email or display name
+            lower_pw = pw.lower()
+            forbidden = re.findall(r'\w+', generic_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
+            for word in forbidden:
+                if word.lower() in lower_pw:
+                    return False, f"❌ Password cannot contain '{word}'."
+            return True, "✅ Password meets all criteria."
+        
+        # Live feedback
+        if password:
+            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
+            if valid:
+                password_feedback.success(msg)
+            else:
+                password_feedback.error(msg)
+        
+        # Live length check
+        if generic_email_full:
+            local_part = generic_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.warning(f"❌ Generic Email exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
+            else:
+                st.success(f"✅ Generic Email meets the 20-character criteria ({len(local_part)} chars).")
+        
+        # Generate button
+        if st.button("🚀 Generate CSV"):
+            # Validate inputs
+            if not all([generic_email_full, display_name, staff_name, staff_email, password, ad_file]):
+                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
+                st.stop()
+
+            local_part = generic_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.error("❌ Generic Email still exceeds 20 characters. Please shorten it first.")
+                st.stop()
+
+            # Validate password
+            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
+            if not valid:
+                st.error(msg)
+                st.stop()
+
+            user_principal_name = local_part
+
+            # Read AD Excel
+            try:
+                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
+                ad_df.columns = [str(c).strip() for c in ad_df.columns]
+                st.success("✅ AD Excel loaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to read Excel: {e}")
+                st.stop()
+
+            # Check if Email Already Exists
+            email_col = None
+            for col in ad_df.columns:
+                if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                    email_col = col
+                    break
+            if email_col is None:
+                st.error("❌ Could not find any email column in the AD file.")
+                st.stop()
+            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
+                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
+                st.stop()
+
+            # Lookup Staff Info
+            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
+            if staff_row.empty:
+                st.error(f"❌ Staff email not found in AD: {staff_email}")
+                st.stop()
+            staff_row = staff_row.iloc[0]
+
+            employee_id = staff_row.get("Employee ID", "")
+            department = staff_row.get("Department", "")
+            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
+            street_address = ""
+            if isinstance(office_full, str) and "-" in office_full:
+                street_address = office_full.split("-", 1)[1].strip()
+            mobile = staff_row.get("Telephone Number", "")
+
+            # Build Export Row
+            export_row = {
+                "givenName": '',
+                "sn": '',
+                "userPrincipalName": user_principal_name,
+                "displayName": display_name,
+                "description": f"Responsible party to the Generic Account is {staff_name} / {employee_id} / {department}",
+                "title": "",
+                "department": department,
+                "sAMAccountName": user_principal_name,
+                "physicalDeliveryOfficeName": office_full,
+                "streetAddress": street_address,
+                "telephoneNumber": mobile,
+                "name": display_name,
+                "mail": user_principal_name,
+                "company": "United Bank for Africa Plc",
+                "co": staff_row.get("Country", "Nigeria"),
+                "mobile": mobile,
+                "employeeID": '',
+                "OUName": "CN=Users,DC=ubagroup,DC=com",
+                "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
+                "msExchOmaAdminWirelessEnable": "0",
+                "msExchHomeServerName": "/o=UBAGROUP/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Configuration/cn=Servers/cn=HQMBX01",
+                "memberOf": "UBAMicrosoftCloud;NG_Normal",
+                "pwdLastSet": "0",
+                "password": password
+            }
+
+            # Export CSV
+            export_df = pd.DataFrame([export_row])
+            st.success("✅ Export ready!")
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=export_df.to_csv(index=False),
+                file_name="generic_email_export.csv",
+                mime="text/csv"
+            )
+
+            with st.expander("📋 Preview Export Table"):
+                st.dataframe(export_df)
+
+    elif "Service Email" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>🔧 Service Email Creator</h2></div>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center; color:gray;'>Create and export service email accounts effortlessly</p>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # Input fields
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            service_email_full = st.text_input("📧 Service Account Email (e.g., serviceaccounttest@ubagroup.com)").strip()
+            display_name = st.text_input("📝 SERVICE ACCOUNT NAME (e.g., service Test Mail)").strip()
+            staff_name = st.text_input("👤 Responsible Party (e.g., Emmanuel Imafidon)").strip()
+        
+        with col2:
+            staff_email = st.text_input("📧 Responsible Party's Email (e.g., emmanuel.imafidon@ubagroup.com)").strip()
+            password = st.text_input("🔒 Password for the Service Account", type="password").strip()
+            password_feedback = st.empty()
+            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
+        
+        def validate_password(pw, service_email_full, display_name, staff_email):
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+            
+            # Check if password contains parts of any email or display name
+            lower_pw = pw.lower()
+            forbidden = re.findall(r'\w+', service_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
+            for word in forbidden:
+                if word.lower() in lower_pw:
+                    return False, f"❌ Password cannot contain '{word}'."
+            return True, "✅ Password meets all criteria."
+        
+        # Live feedback
+        if password:
+            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
+            if valid:
+                password_feedback.success(msg)
+            else:
+                password_feedback.error(msg)
+
+        # Live length check
+        if service_email_full:
+            local_part = service_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.warning(f"❌ Local part exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
+            else:
+                st.success(f"✅ Service Account Email meets the 20-character criteria ({len(local_part)} chars).")
+        
+        # Generate button
+        if st.button("🚀 Generate CSV", key="service_generate"):
+            # Validate inputs
+            if not all([service_email_full, display_name, staff_name, staff_email, password, ad_file]):
+                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
+                st.stop()
+
+            local_part = service_email_full.split('@')[0]
+            if len(local_part) > 20:
+                st.error("❌ Service Account still exceeds 20 characters. Please shorten it first.")
+                st.stop()
+
+            # Validate password
+            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
+            if not valid:
+                st.error(msg)
+                st.stop()
+
+            user_principal_name = local_part
+
+            # Read AD Excel
+            try:
+                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
+                ad_df.columns = [str(c).strip() for c in ad_df.columns]
+                st.success("✅ AD Excel loaded successfully!")
+            except Exception as e:
+                st.error(f"❌ Failed to read Excel: {e}")
+                st.stop()
+
+            # Check if Email Already Exists
+            email_col = None
+            for col in ad_df.columns:
+                if re.search(r"(mail|email|userprincipalname)", col, re.I):
+                    email_col = col
+                    break
+            if email_col is None:
+                st.error("❌ Could not find any email column in the AD file.")
+                st.stop()
+            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
+                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
+                st.stop()
+
+            # Lookup Staff Info
+            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
+            if staff_row.empty:
+                st.error(f"❌ Staff email not found in AD: {staff_email}")
+                st.stop()
+            staff_row = staff_row.iloc[0]
+
+            employee_id = staff_row.get("Employee ID", "")
+            department = staff_row.get("Department", "")
+            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
+            street_address = ""
+            if isinstance(office_full, str) and "-" in office_full:
+                street_address = office_full.split("-", 1)[1].strip()
+            mobile = staff_row.get("Telephone Number", "")
+
+            # Build Export Row
+            export_row = {
+                "givenName": '',
+                "sn": '',
+                "userPrincipalName": user_principal_name,
+                "displayName": display_name,
+                "description": f"Responsible party to the Service Account is {staff_name} / {employee_id} / {department}",
+                "title": "",
+                "department": department,
+                "sAMAccountName": user_principal_name,
+                "physicalDeliveryOfficeName": office_full,
+                "streetAddress": street_address,
+                "telephoneNumber": mobile,
+                "name": display_name,
+                "mail": user_principal_name,
+                "company": "United Bank for Africa Plc",
+                "co": staff_row.get("Country", "Nigeria"),
+                "mobile": mobile,
+                "employeeID": '',
+                "OUName": "CN=Users,DC=ubagroup,DC=com",
+                "homeMDB": "",
+                "msExchOmaAdminWirelessEnable": "0",
+                "msExchHomeServerName": "",
+                "memberOf": "UBAMicrosoftCloud;NG_Normal",
+                "pwdLastSet": "0",
+                "password": password
+            }
+
+            # Export CSV
+            export_df = pd.DataFrame([export_row])
+            st.success("✅ Export ready!")
+            st.download_button(
+                label="⬇️ Download CSV",
+                data=export_df.to_csv(index=False),
+                file_name="service_email_export.csv",
+                mime="text/csv"
+            )
+
+            with st.expander("📋 Preview Export Table"):
+                st.dataframe(export_df)
+
+    elif "Vendor Creator" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>🏦 Vendor Creator (Manual Entry)</h2></div>', unsafe_allow_html=True)
+        st.write("Fill details below, choose SOL, click **Add User** for each vendor. When finished click **Export CSV**.")
+        
+        # Constants
+        CONSTANTS = {
+            "OUName": "CN=Users,DC=ubagroup,DC=com",
+            "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
+            "msExchOmaAdminWirelessEnable": "0",
+            "msExchHomeServerName": "/o=UBAGROUP/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Configuration/cn=Servers/cn=HQMBX01",
+            "memberOf": "Remote Support",
+            "company": "United Bank for Africa Plc",
+            "co": "Nigeria",
+            "pwdLastSet": "0"
+        }
+
+        EXPORT_COLUMNS = [
+            "givenName", "sn", "userPrincipalName", "displayName", "description", "title", "department",
+            "sAMAccountName", "physicalDeliveryOfficeName", "streetAddress", "telephoneNumber", "name", "mail",
+            "company", "co", "mobile", "OUName", "homeMDB", "msExchOmaAdminWirelessEnable", "msExchHomeServerName",
+            "mailNickName", "memberOf", "employeeID", "password", "displayNamePrintable", "pwdLastSet"
+        ]
+        
+        # Helper functions
+        def detect_sol_columns(df: pd.DataFrame):
+            cols = [c for c in df.columns]
+            sol_id_col, sol_name_col, street_col = None, None, None
+            for c in cols:
+                lc = c.lower()
+                if any(k in lc for k in ["sol", "sol id", "solid", "nga_"]) and sol_id_col is None:
+                    sol_id_col = c
+                if any(k in lc for k in ["physical", "delivery", "office"]) and sol_name_col is None:
+                    sol_name_col = c
+                if any(k in lc for k in ["street", "address"]) and street_col is None:
+                    street_col = c
+            if sol_id_col is None and cols: sol_id_col = cols[0]
+            if sol_name_col is None and len(cols) > 1: sol_name_col = cols[1]
+            if street_col is None and len(cols) > 2: street_col = cols[2]
+            return sol_id_col, sol_name_col, street_col
+
+        def load_sol_list(sol_file):
+            if sol_file is None:
+                return pd.DataFrame(), [], "", "", ""
+            try:
+                df = pd.read_excel(sol_file)
+                sol_id_col, sol_name_col, street_col = detect_sol_columns(df)
+                df["SOL_ID"] = df[sol_id_col].astype(str).str.strip()
+                df["SOL_NAME"] = df[sol_name_col].astype(str).str.strip()
+                df["DISPLAY"] = df["SOL_ID"] + " - " + df["SOL_NAME"]
+                return df, df["DISPLAY"].dropna().unique().tolist(), sol_id_col, sol_name_col, street_col
+            except Exception as e:
+                st.error(f"❌ Failed to read SOL mapping: {e}")
+                return pd.DataFrame(), [], "", "", ""
+
+        def load_existing_users(existing_file):
+            if existing_file is None:
+                return None
+            try:
+                return pd.read_excel(existing_file)
+            except Exception as e:
+                st.warning(f"Could not read existing users file: {e}")
+                return None
+
+        def get_next_con(existing_df, session_ids):
+            max_num = 10000
+            if existing_df is not None:
+                id_col = next((c for c in existing_df.columns if c.strip().lower() in ["employeeid", "employee id"]), None)
+                if id_col:
+                    vals = existing_df[id_col].dropna().astype(str)
+                    nums = [int(re.findall(r"CON(\d+)", v)[0]) for v in vals if re.match(r"CON\d+", v)]
+                    if nums:
+                        max_num = max(max_num, max(nums))
+            if session_ids:
+                nums2 = [int(re.findall(r"CON(\d+)", v)[0]) for v in session_ids if re.match(r"CON\d+", v)]
+                if nums2:
+                    max_num = max(max_num, max(nums2))
+            return f"CON{max_num + 1:05d}"
+
+        def validate_password(pw, first_name, surname):
+            if not pw:
+                return False, "❌ Password required."
+            if len(pw) < 10:
+                return False, "❌ Password must be at least 10 characters long."
+            if not pw[0].isupper():
+                return False, "❌ First letter must be capital."
+            if not all(c.islower() or c.isdigit() for c in pw[1:]):
+                return False, "❌ Remaining characters must be lowercase letters or numbers."
+            lower_pw = pw.lower()
+            for w in [first_name, surname]:
+                if w and w.lower() in lower_pw:
+                    return False, f"❌ Password cannot contain '{w}'."
+            return True, "✅ Password meets all criteria."
+
+        def make_username(first_name, surname):
+            uname = f"{first_name.strip()}.{surname.strip()}".lower()
+            return re.sub(r"[^a-z0-9.]", "", uname)
+        
+        # File uploads
+        st.sidebar.subheader("📂 File Uploads")
+        sol_file = st.sidebar.file_uploader("Upload SOL mapping file", type=["xlsx", "xls", "csv"])
+        existing_file = st.sidebar.file_uploader("Upload existing_users.xlsx (optional)", type=["xlsx", "xls", "csv"])
+        
+        # Load files
+        sol_df, sol_list, sol_id_col, sol_name_col, street_col = load_sol_list(sol_file)
+        existing_df = load_existing_users(existing_file)
+        
+        # Session storage
+        if "vendor_new_users" not in st.session_state:
+            st.session_state["vendor_new_users"] = []
+        
+        # UI
+        left, right = st.columns([2, 1])
+        
+        with left:
+            st.subheader("User details")
+            first_name = st.text_input("First Name (givenName)").strip()
+            surname = st.text_input("Surname / Last Name (sn)").strip()
+            job_title = st.text_input("Job Title (title)").strip()
+            department = st.text_input("Department").strip()
+            phone = st.text_input("Phone Number (telephoneNumber & mobile)").strip()
+            password = st.text_input("Password (meets rules)", type="password")
+            staff_email = st.text_input("Responsible Party Email (for description)").strip()
+        
+        with right:
+            st.subheader("SOL / Branch")
+            if sol_list:
+                sol_choice = st.selectbox("Select SOL", sol_list)
+                street_address = ""
+                sr = sol_df.loc[sol_df["DISPLAY"] == sol_choice]
+                if not sr.empty and street_col:
+                    street_address = sr.iloc[0].get(street_col, "")
+            else:
+                st.warning("SOL list empty or not found.")
+                sol_choice, street_address = "", ""
+
+            st.markdown("---")
+            if existing_df is None:
+                st.warning("No existing users file loaded. Employee IDs will start at CON10001.")
+            else:
+                st.info(f"Loaded existing users ({len(existing_df)} rows). Using their Employee IDs to continue CON series.")
+        
+        session_empids = [u["employeeID"] for u in st.session_state["vendor_new_users"]]
+        next_emp_preview = get_next_con(existing_df, session_empids)
+        st.info(f"Next available Employee ID: **{next_emp_preview}**")
+        
+        # Password validation
+        pw_ok = True
+        if password:
+            pw_ok, pw_msg = validate_password(password, first_name, surname)
+            st.success(pw_msg) if pw_ok else st.error(pw_msg)
+        
+        # Add User button
+        if st.button("➕ Add User", key="vendor_add"):
+            required = [first_name, surname, job_title, department, sol_choice, password, staff_email]
+            if not all(required):
+                st.error("Please fill all required fields.")
+            elif not pw_ok:
+                st.error("Password invalid.")
+            else:
+                emp_id = get_next_con(existing_df, session_empids)
+                username = make_username(first_name, surname)
+                display_name = f"{first_name} {surname}".strip()
+                description = f"{emp_id}.....Responsible party to the Account is {staff_email} / {emp_id} / {department}"
+
+                record = {
+                    "givenName": first_name,
+                    "sn": surname,
+                    "userPrincipalName": username,
+                    "displayName": display_name,
+                    "description": description,
+                    "title": job_title,
+                    "department": department,
+                    "sAMAccountName": username,
+                    "physicalDeliveryOfficeName": sol_choice,
+                    "streetAddress": street_address,
+                    "telephoneNumber": phone,
+                    "name": display_name,
+                    "mail": username,
+                    "company": CONSTANTS["company"],
+                    "co": CONSTANTS["co"],
+                    "mobile": phone,
+                    "OUName": CONSTANTS["OUName"],
+                    "homeMDB": CONSTANTS["homeMDB"],
+                    "msExchOmaAdminWirelessEnable": CONSTANTS["msExchOmaAdminWirelessEnable"],
+                    "msExchHomeServerName": CONSTANTS["msExchHomeServerName"],
+                    "mailNickName": username,
+                    "memberOf": CONSTANTS["memberOf"],
+                    "employeeID": emp_id,
+                    "password": password,
+                    "displayNamePrintable": display_name,
+                    "pwdLastSet": CONSTANTS["pwdLastSet"]
+                }
+
+                st.session_state["vendor_new_users"].append(record)
+                st.success(f"Added {display_name} (Employee ID: {emp_id})")
+        
+        # Preview & Export
+        st.markdown("---")
+        st.subheader("Preview - Users to be created")
+        
+        if st.session_state["vendor_new_users"]:
+            preview_df = pd.DataFrame(st.session_state["vendor_new_users"])
+            preview_df = preview_df.assign(
+                userPrincipalName=preview_df["userPrincipalName"].astype(str) + "@ubagroup.com",
+                mail=preview_df["mail"].astype(str) + "@ubagroup.com"
+            )
+            st.dataframe(preview_df[EXPORT_COLUMNS], use_container_width=True)
+        else:
+            st.info("No users added yet.")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("↩️ Remove Last", key="vendor_remove"):
+                if st.session_state["vendor_new_users"]:
+                    removed = st.session_state["vendor_new_users"].pop()
+                    st.warning(f"Removed {removed['displayName']} (Employee ID: {removed['employeeID']})")
+        with c2:
+            if st.button("🧹 Clear All", key="vendor_clear"):
+                st.session_state["vendor_new_users"] = []
+                st.info("Cleared all staged users.")
+        with c3:
+            if st.button("💾 Export CSV", key="vendor_export"):
+                if not st.session_state["vendor_new_users"]:
+                    st.error("No users to export.")
+                else:
+                    export_df = pd.DataFrame(st.session_state["vendor_new_users"])
+                    export_df["userPrincipalName"] = export_df["userPrincipalName"] + "@ubagroup.com"
+                    export_df["mail"] = export_df["mail"] + "@ubagroup.com"
+                    for col in EXPORT_COLUMNS:
+                        if col not in export_df.columns:
+                            export_df[col] = ""
+                    export_df = export_df[EXPORT_COLUMNS]
+                    buf = BytesIO()
+                    export_df.to_csv(buf, index=False)
+                    buf.seek(0)
+                    st.download_button("⬇️ Download Export CSV", buf.getvalue(), file_name="vendor_export.csv", mime="text/csv")
+                    st.success(f"Export ready — {len(export_df)} user(s).")
+
+    elif "Exit File" in selected_tool:
+        st.markdown('<div class="tool-card"><h2>📤 Exit File Converter</h2></div>', unsafe_allow_html=True)
+        st.write("Upload an Exit Portal Excel/CSV file and download it in the required template format.")
+        
+        uploaded_file = st.file_uploader("Upload Exit File", type=["xlsx", "xls", "csv"])
+        
+        if uploaded_file:
+            # Read file
+            if uploaded_file.name.lower().endswith(".csv"):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            # Pre-process Mobile Phone
+            if "Mobile Phone" in df.columns:
+                df["Mobile Phone"] = (
+                    pd.to_numeric(df["Mobile Phone"], errors="coerce")
+                    .astype("Int64")
+                    .astype(str)
+                    .replace("<NA>", "")
+                    .str.replace(r"\.0$", "", regex=True)
+                    .str.strip()
+                )
+            
+            # Column Mapping
+            mapping = {
+                "Employee ID": "EmployeeNumber",
+                "Full Name": "EmployeeName",
+                "Gender": "Gender",
+                "Grade": "JobGrade",
+                "Job Role": "JobRole",
+                "Directorate": "Directorate",
+                "Date Of Employment": "DateofEmployment",
+                "Effective Date": "EffectiveDate",
+                "Mobile Phone": "MobilePhone",
+                "Sub-reason": "ReasonForLeaving1",
+                "Reason for Leaving": "OtherReasonForLeaving",
+                "Work Address SolId": "SolID",
+            }
+            
+            # Apply mapping
+            df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+            
+            # Required Columns Order
+            required_cols = [
+                "EmployeeNumber",
+                "EmployeeName",
+                "Gender",
+                "JobGrade",
+                "JobRole",
+                "Directorate",
+                "DateofEmployment",
+                "EffectiveDate",
+                "InitiationDate",
+                "MobilePhone",
+                "ReasonForLeaving1",
+                "OtherReasonForLeaving",
+                "SolID",
+                "DateOfDeactivation",
+            ]
+            
+            # Initialize output dataframe
+            output_df = pd.DataFrame(columns=required_cols)
+            
+            for col in required_cols:
+                if col in df.columns:
+                    output_df[col] = df[col]
+                else:
+                    output_df[col] = ""
+            
+            # Derived / Cleaned Columns
+            output_df["InitiationDate"] = output_df["EffectiveDate"]
+            output_df["DateOfDeactivation"] = output_df["EffectiveDate"]
+            
+            # Clean SolID column
+            def clean_solid(v):
+                if pd.isna(v) or v == "":
+                    return ""
+                s = str(v).strip()
+                s = re.sub(r"\D", "", s)
+                if s and not s.startswith("0"):
+                    s = "0" + s
+                return s
+            
+            if "SolID" in output_df.columns:
+                output_df["SolID"] = output_df["SolID"].apply(clean_solid)
+            
+            # Download
+            output_file = "converted_exit_file.xlsx"
+            with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
+                output_df.to_excel(writer, index=False, sheet_name="ExitData")
+            
+            with open(output_file, "rb") as f:
+                st.download_button(
+                    label="📥 Download Converted File",
+                    data=f,
+                    file_name=output_file,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            
+            st.success("✅ File converted successfully!")
+            
+            # Preview
+            with st.expander("📋 Preview Converted Data"):
+                st.dataframe(output_df)
 
     # Footer
     st.markdown("""
