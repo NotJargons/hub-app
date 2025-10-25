@@ -255,7 +255,7 @@ else:
 
         return df[expected_cols]
 
-    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD", "PSG", "ERSM"}
+    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
     def normalize_name(name: str, case="title"):
         if not name or str(name).lower() == "nan": return ""
@@ -478,8 +478,9 @@ else:
                                 # Clean the SOL ID from the mapping file
                                 sol_key = clean_sol(r.get("SOL ID", ""))
                                 if sol_key:
+                                    # Fixed typo: "physicalDevliveryOfficeName" -> "physicalDeliveryOfficeName"
                                     sol_dict[sol_key] = (
-                                        str(r.get("physicalDevliveryOfficeName", "N/A")),
+                                        str(r.get("physicalDeliveryOfficeName", "N/A")),
                                         str(r.get("streetAddress", "N/A"))
                                     )
                             
