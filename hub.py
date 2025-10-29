@@ -1,13 +1,12 @@
+
 import streamlit as st
 import pandas as pd
 import time
 import io
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 import numpy as np
-from io import BytesIO
 
 # Configure page
 st.set_page_config(
@@ -57,12 +56,6 @@ st.markdown("""
         color: white;
         margin: 1rem 0;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .tool-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     }
     
     .grp-card {
@@ -72,12 +65,6 @@ st.markdown("""
         color: white;
         margin: 1rem 0;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .grp-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     }
     
     .metric-card {
@@ -103,20 +90,10 @@ st.markdown("""
         border-radius: 8px;
         padding: 0.5rem 1rem;
         font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
     
     .download-button {
         background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
-    }
-    
-    .download-button:hover {
-        box-shadow: 0 4px 12px rgba(17, 153, 142, 0.4) !important;
     }
     
     .admin-badge {
@@ -126,20 +103,6 @@ st.markdown("""
         font-size: 0.8rem;
         font-weight: bold;
         color: white;
-    }
-    
-    .sidebar-section {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-    
-    .tool-selector {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -232,43 +195,31 @@ else:
 
     # Sidebar for tool selection
     with st.sidebar:
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown("### 🔧 Tool Selection")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="tool-selector">', unsafe_allow_html=True)
         selected_tool = st.radio(
             "Choose your tool:",
-            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator", "📧 Generic Email Creator", 
-             "🔧 Service Email Creator", "📤 Exit File Converter"],
+            ["🏢 AD Bulk Creator", "🗄️ GRP Script Generator"],
             index=0
         )
-        st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown("---")
         st.markdown("### ℹ️ Tool Info")
         if "AD Bulk" in selected_tool:
             st.info("Creates Active Directory users from HR Excel files.")
-        elif "GRP Script" in selected_tool:
+        else:
             st.info("Generates SQL INSERT statements for UBACS application users from Excel data.")
-        elif "Generic Email" in selected_tool:
-            st.info("Creates generic email accounts for specific purposes.")
-        elif "Service Email" in selected_tool:
-            st.info("Creates service email accounts for applications.")
-        elif "Exit File" in selected_tool:
-            st.info("Converts exit portal files to the required template format.")
-        st.markdown('</div>', unsafe_allow_html=True)
 
     # AD Bulk Creator Functions
+       # ✅ Corrected normalize_hr_file
     def normalize_hr_file(hr_df: pd.DataFrame) -> pd.DataFrame:
         """Normalize HR file column names — handles variations automatically"""
         column_map = {
             "staff id": ["staff id", "employee id", "employee_id", "employment number", "staff_no", "staff number"],
             "first name": ["first name", "firstname", "emp first name", "given name"],
             "surname": ["surname", "last name", "lastname", "family name"],
-            "middle name": ["middle name", "middlename", "other name", "othername"],
+            "middle name": ["middle name", "middlename", "other name"],
             "phone number": ["phone number", "phone", "mobile", "number", "contact", "telephone"],
-            "role": ["role","title", "job role", "position", "designation", "job title"],
+            "role": ["role", "job role", "position", "designation", "job title"],
             "sol id": ["sol id", "work address sol id", "branch code", "sol", "location id"],
             "department": ["department", "dept", "unit", "division"]
         }
@@ -295,7 +246,7 @@ else:
 
         return df[expected_cols]
 
-    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD", "PSG", "ESRM"}
+    ABBREVIATIONS = {"ATM", "POS", "HR", "IT", "CEO", "MD"}
 
     def normalize_name(name: str, case="title"):
         if not name or str(name).lower() == "nan": return ""
@@ -307,17 +258,11 @@ else:
         return " ".join([w.upper() if w.upper() in ABBREVIATIONS else w.capitalize() for w in str(text).split()])
 
     def clean_sol(sol_val):
-        """Clean SOL ID - remove non-digits and pad to 4 digits"""
-        try: 
-            sol = str(sol_val).split(".")[0].strip()
-            # Remove any non-digit characters
-            sol = re.sub(r'\D', '', sol)
-            # Pad with leading zeros to make it 4 digits
-            return sol.zfill(4) if sol.isdigit() else None
-        except: 
-            return None
+        try: sol=str(sol_val).split(".")[0]; return sol.zfill(4) if sol.isdigit() else None
+        except: return None
 
     def format_phone(phone):
+        """Format phone with Excel-friendly leading single quote to preserve + sign"""
         phone = str(phone).split(".")[0].strip().replace(" ","").replace("-","")
         formatted = "N/A"
         
@@ -333,75 +278,10 @@ else:
         # Add single quote prefix to preserve + in Excel
         return f"{formatted}"
 
-    def build_title_department_mapping(existing_df):
-        # Find the correct column names for title and department
-        title_col = None
-        dept_col = None
-        
-        # Try to find title column
-        for col in existing_df.columns:
-            if "title" in col.lower() or "role" in col.lower() or "position" in col.lower():
-                title_col = col
-                break
-        
-        # Try to find department column
-        for col in existing_df.columns:
-            if "department" in col.lower() or "dept" in col.lower() or "unit" in col.lower():
-                dept_col = col
-                break
-        
-        if title_col is None or dept_col is None:
-            st.warning("Could not find title or department columns in existing users file")
-            return {}
-        
-        # Create a count of departments for each title
-        title_dept_counts = {}
-        for _, row in existing_df.iterrows():
-            title = str(row[title_col]).strip().lower()
-            dept = str(row[dept_col]).strip()
-            
-            if title and title != "nan" and dept and dept != "nan":
-                # Use proper case for department
-                dept = proper_case(dept)
-                
-                if title not in title_dept_counts:
-                    title_dept_counts[title] = {}
-                
-                if dept not in title_dept_counts[title]:
-                    title_dept_counts[title][dept] = 0
-                
-                title_dept_counts[title][dept] += 1
-        
-        # Create the mapping by selecting the most frequent department for each title
-        mapping = {}
-        for title, dept_counts in title_dept_counts.items():
-            # Find the department with the highest count
-            most_common_dept = max(dept_counts.items(), key=lambda x: x[1])[0]
-            mapping[title] = most_common_dept
-        
-        return mapping
-
-    def clean_department(dept_val, role_val, title_dept_mapping):
-        role = proper_case(role_val)
-        
-        # First check if we have a valid department in the HR file
+    def clean_department(dept_val, role_val):
+        if str(role_val).strip().lower()=="direct sales executive": return "Marketing"
         dept = proper_case(dept_val)
-        if dept != "N/A":
-            return dept
-        
-        # If no valid department, try to map using the title
-        role_lower = str(role_val).strip().lower()
-        if role_lower in title_dept_mapping:
-            return title_dept_mapping[role_lower]
-        
-        # Special case handling
-        if role_lower == "direct sales executive":
-            return "Marketing"
-        elif role_lower == "relationship officer":
-            return "Marketing"
-        
-        # If no mapping found, use the role as department
-        return role if role != "N/A" else ""
+        return dept if dept!="N/A" else proper_case(role_val)
 
     def choose_upn(fname, mname, lname, existing_sam):
         reasons=[]
@@ -417,17 +297,6 @@ else:
             elif m_upn in existing_sam: reasons.append("Middlename.lastname already exists")
             else: return m_upn, mname, None
         return None, None, "; ".join(reasons) if reasons else "No valid UPN"
-
-    # Exit File Converter Functions
-    def clean_solid(v):
-        """Ensure SolID is always text and starts with 0 if it looks numeric."""
-        if pd.isna(v) or v == "":
-            return ""
-        s = str(v).strip()
-        s = re.sub(r"\D", "", s)  # keep only digits
-        if s and not s.startswith("0"):
-            s = "0" + s
-        return s
 
     # Main application logic
     if "AD Bulk" in selected_tool:
@@ -458,40 +327,8 @@ else:
         with col2:
             st.markdown("### ⚡ Execution")
             
-            # Password option
-            password_option = st.radio(
-                "Password Option:",
-                ["Use Default Password", "Set Custom Password"],
-                index=0
-            )
-            
-            if password_option == "Set Custom Password":
-                custom_password = st.text_input("Custom Password", type="password")
-                password_feedback = st.empty()
-                
-                def validate_password(pw):
-                    if len(pw) < 10:
-                        return False, "❌ Password must be at least 10 characters long."
-                    if not pw[0].isupper():
-                        return False, "❌ First letter must be capital."
-                    if not all(c.islower() or c.isdigit() for c in pw[1:]):
-                        return False, "❌ Remaining characters must be lowercase letters or numbers."
-                    return True, "✅ Password meets all criteria."
-                
-                if custom_password:
-                    valid, msg = validate_password(custom_password)
-                    if valid:
-                        password_feedback.success(msg)
-                    else:
-                        password_feedback.error(msg)
-            
             if st.button("🚀 Process Files", type="primary", use_container_width=True):
                 if hr_file and existing_file and sol_file:
-                    # Validate custom password if selected
-                    if password_option == "Set Custom Password" and (not custom_password or not validate_password(custom_password)[0]):
-                        st.error("Please provide a valid custom password")
-                        st.stop()
-                    
                     start_time = time.time()
                     
                     with st.spinner("Processing files..."):
@@ -520,31 +357,10 @@ else:
                             existing_sam = set(existing["SAM Account Name"].str.lower().dropna())
                             existing_staff_ids = set(existing["Employee ID"].dropna().astype(str))
                             
-                            # Build SOL dictionary with proper key cleaning
-                            sol_dict = {}
-                            for _, r in solmap.iterrows():
-                                # Clean the SOL ID from the mapping file
-                                sol_key = clean_sol(r.get("SOL ID", ""))
-                                if sol_key:
-                                    # Fixed typo: "physicalDevliveryOfficeName" -> "physicalDeliveryOfficeName"
-                                    sol_dict[sol_key] = (
-                                        str(r.get("physicalDeliveryOfficeName", "N/A")),
-                                        str(r.get("streetAddress", "N/A"))
-                                    )
-                            
-                            # Build title-department mapping from existing users
-                            title_dept_mapping = build_title_department_mapping(existing)
-                            
-                            if title_dept_mapping:
-                                st.success(f"✅ Built department mapping for {len(title_dept_mapping)} unique job titles")
-                                
-                                # Show some sample mappings for verification
-                                with st.expander("📋 Sample Title-Department Mappings"):
-                                    sample_mappings = list(title_dept_mapping.items())[:10]
-                                    for title, dept in sample_mappings:
-                                        st.write(f"- **{title}**: {dept}")
-                            else:
-                                st.warning("⚠️ Could not build department mapping from existing users")
+                            sol_dict = {str(r["SOL ID"]).split(".")[0].zfill(4): (
+                                            str(r.get("physicalDevliveryOfficeName", "N/A")),
+                                            str(r.get("streetAddress", "N/A"))
+                                        ) for _, r in solmap.iterrows()}
                             
                             # Process HR input
                             output, skipped = [], []
@@ -558,9 +374,6 @@ else:
                                 "memberOf": "All Staff Nigeria;UBAMicrosoftCloud;NG_Normal",
                                 "pwdLastSet": "0"
                             }
-                            
-                            # Determine password to use
-                            final_password = custom_password if password_option == "Set Custom Password" else "Developer2378"
                             
                             for _, row in hr.iterrows():
                                 staff_id = str(row["STAFF ID"]).strip().upper()
@@ -583,7 +396,7 @@ else:
                                     continue
                                 
                                 role = proper_case(row["ROLE"])
-                                department = clean_department(row.get("DEPARTMENT",""), row["ROLE"], title_dept_mapping)
+                                department = clean_department(row.get("DEPARTMENT",""), role)
                                 sol_id = clean_sol(row["SOL ID"])
                                 phone = format_phone(row["PHONE NUMBER"])  # Excel-friendly format
                                 
@@ -596,14 +409,7 @@ else:
                                     skipped.append({"Staff ID": staff_id, "Reason": fail_reason})
                                     continue
                                 
-                                # Fixed: Proper SOL lookup
-                                if sol_id and sol_id in sol_dict:
-                                    office, address = sol_dict[sol_id]
-                                else:
-                                    office, address = "N/A", "N/A"
-                                    if sol_id:
-                                        skipped.append({"Staff ID": staff_id, "Reason": f"SOL ID {sol_id} not found in mapping"})
-                                
+                                office, address = sol_dict.get(sol_id, ("N/A","N/A"))
                                 display_name = f"{given_name.title()} {lname}".strip()
                                 
                                 output.append({
@@ -630,7 +436,7 @@ else:
                                     "mailNickName": base_upn,
                                     "memberOf": FIXED_FIELDS["memberOf"],
                                     "employeeID": staff_id,
-                                    "password": final_password,
+                                    "password": "Developer2378",
                                     "displayNamePrintable": display_name,
                                     "pwdLastSet": FIXED_FIELDS["pwdLastSet"]
                                 })
@@ -645,7 +451,6 @@ else:
                             st.session_state['ad_skipped'] = skipped
                             st.session_state['ad_hr'] = hr
                             st.session_state['ad_execution_time'] = execution_time
-                            st.session_state['ad_title_dept_mapping'] = title_dept_mapping
                             
                             st.success(f"✅ Processing completed in {execution_time}s!")
                             
@@ -683,7 +488,7 @@ else:
             if st.session_state['ad_output']:
                 st.markdown("#### 👥 Created Users Preview")
                 output_df = pd.DataFrame(st.session_state['ad_output'])
-                st.dataframe(output_df[['givenName', 'sn', 'userPrincipalName', 'employeeID', 'department', 'physicalDeliveryOfficeName']].head(10), use_container_width=True)
+                st.dataframe(output_df[['givenName', 'sn', 'userPrincipalName', 'employeeID', 'department']].head(10), use_container_width=True)
             
             # Skipped users
             if st.session_state['ad_skipped']:
@@ -691,21 +496,9 @@ else:
                 skipped_df = pd.DataFrame(st.session_state['ad_skipped'])
                 st.dataframe(skipped_df, use_container_width=True)
             
-            # Department mapping info
-            if 'ad_title_dept_mapping' in st.session_state and st.session_state['ad_title_dept_mapping']:
-                st.markdown("#### 📋 Title-Department Mapping Used")
-                mapping_df = pd.DataFrame([
-                    {"Title": title, "Department": dept} 
-                    for title, dept in st.session_state['ad_title_dept_mapping'].items()
-                ])
-                st.dataframe(mapping_df.head(10), use_container_width=True)
-                
-                if len(mapping_df) > 10:
-                    st.info(f"Showing first 10 of {len(mapping_df)} mappings. All mappings were used during processing.")
-            
             # Download section
             st.markdown("### 📥 Download Files")
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
                 if st.session_state['ad_output']:
@@ -743,11 +536,9 @@ else:
             
             with col3:
                 if st.session_state['ad_output'] or st.session_state['ad_skipped']:
-                    # HTML report with conditional skipped users section
+                    # HTML report
                     html_content = "<html><body>"
-                    
-                    # Created users section
-                    if len(st.session_state['ad_output']) > 1:
+                    if len (st.session_state['ad_output']) > 1:
                         html_content += "<p><b>Users have been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
@@ -756,7 +547,8 @@ else:
                             html_content += f"<tr><td>{user['employeeID']}</td><td><a href='mailto:{email}'>{email}</a></td></tr>"
                         html_content += "</table>"
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
-                    elif len(st.session_state['ad_output']) == 1:
+
+                    else:
                         html_content += "<p><b>User has been created as:</b></p>"
                         html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
                         html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>Official Mail</th></tr>"
@@ -766,30 +558,29 @@ else:
                         html_content += "</table>"
                         html_content += "<p>Please contact ITCARE on 0201-2807200 Ext.18200 for login details.</p><br>"
                     
-                    # Skipped users section - only show if there are skipped users
-                    if st.session_state['ad_skipped']:
-                        if len(st.session_state['ad_skipped']) > 1:
-                            html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
-                            html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                            html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
-                            for s in st.session_state['ad_skipped']:
-                                staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
-                                if not staff.empty:
-                                    staff = staff.iloc[0]
-                                    html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
-                            html_content += "</table>"
-                            html_content += "<p>Please review the above errors and revert.</p>"
-                        else:
-                            html_content += "<p><b>However, the below user was not created due to error below:</b></p>"
-                            html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
-                            html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
-                            for s in st.session_state['ad_skipped']:
-                                staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
-                                if not staff.empty:
-                                    staff = staff.iloc[0]
-                                    html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
-                            html_content += "</table>"
-                            html_content += "<p>Please review the above error and revert.</p>"
+                    if len (st.session_state['ad_skipped']) > 1:
+                        html_content += "<p><b>However, the below users were not created due to errors below:</b></p>"
+                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
+                        for s in st.session_state['ad_skipped']:
+                            staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
+                            if not staff.empty:
+                                staff = staff.iloc[0]
+                                html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
+                        html_content += "</table>"
+                        html_content += "<p>Please review the above errors and revert.</p>"
+
+                    else:
+                        html_content += "<p><b>However, the below user was not created due to error below:</b></p>"
+                        html_content += '<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse;">'
+                        html_content += "<tr style='background-color:#c00000;color:white;'><th>Staff ID</th><th>First Name</th><th>Last Name</th><th>Middle Name</th><th>Reason</th></tr>"
+                        for s in st.session_state['ad_skipped']:
+                            staff = st.session_state['ad_hr'][st.session_state['ad_hr']["STAFF ID"].str.upper() == s["Staff ID"]]
+                            if not staff.empty:
+                                staff = staff.iloc[0]
+                                html_content += f"<tr><td>{s['Staff ID']}</td><td>{staff.get('FIRST NAME','')}</td><td>{staff.get('SURNAME','')}</td><td>{staff.get('MIDDLE NAME','')}</td><td>{s['Reason']}</td></tr>"
+                        html_content += "</table>"
+                        html_content += "<p>Please review the above error and revert.</p>"
                     
                     html_content += "</body></html>"
                     
@@ -801,28 +592,11 @@ else:
                         use_container_width=True
                     )
             
-            with col4:
-                if 'ad_title_dept_mapping' in st.session_state and st.session_state['ad_title_dept_mapping']:
-                    # Title-Department mapping CSV download
-                    mapping_csv_buffer = io.StringIO()
-                    mapping_df = pd.DataFrame([
-                        {"Title": title, "Department": dept} 
-                        for title, dept in st.session_state['ad_title_dept_mapping'].items()
-                    ])
-                    mapping_df.to_csv(mapping_csv_buffer, index=False)
-                    st.download_button(
-                        label="📋 Download Mapping CSV",
-                        data=mapping_csv_buffer.getvalue(),
-                        file_name=f"title_department_mapping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-            
             # Additional info about Excel formatting
             if st.session_state['ad_output']:
                 st.info("📝 **Note:** Phone numbers in the CSV are prefixed with a single quote (') to preserve the + sign when opening in Excel.")
 
-    elif "GRP Script" in selected_tool:
+    else:  # GRP Script Generator
         st.markdown('<div class="grp-card"><h2>🗄️ GRP Script Generator</h2></div>', unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
@@ -933,401 +707,6 @@ VALUES
                 mime="text/plain",
                 use_container_width=True
             )
-
-    elif "Generic Email" in selected_tool:
-        st.markdown('<div class="tool-card"><h2>📧 Generic Email Creator</h2></div>', unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center; color:gray;'>Create and export generic email accounts effortlessly</p>", unsafe_allow_html=True)
-        st.markdown("---")
-        
-        # Input fields
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            generic_email_full = st.text_input("📧 Generic Email ID (e.g., generictestmail@ubagroup.com)").strip()
-            display_name = st.text_input("📝 Generic Display Name (e.g., Generic Test Mail)").strip()
-            staff_name = st.text_input("👤 Name of Staff (e.g., Emmanuel Imafidon)").strip()
-        
-        with col2:
-            staff_email = st.text_input("📧 Staff Email Address (e.g., emmanuel.imafidon@ubagroup.com)").strip()
-            password = st.text_input("🔒 Password for the generic account", type="password").strip()
-            password_feedback = st.empty()
-            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
-        
-        def validate_password(pw, generic_email_full, display_name, staff_email):
-            if len(pw) < 10:
-                return False, "❌ Password must be at least 10 characters long."
-            if not pw[0].isupper():
-                return False, "❌ First letter must be capital."
-            if not all(c.islower() or c.isdigit() for c in pw[1:]):
-                return False, "❌ Remaining characters must be lowercase letters or numbers."
-            
-            # Check if password contains parts of any email or display name
-            lower_pw = pw.lower()
-            forbidden = re.findall(r'\w+', generic_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
-            for word in forbidden:
-                if word.lower() in lower_pw:
-                    return False, f"❌ Password cannot contain '{word}'."
-            return True, "✅ Password meets all criteria."
-        
-        # Live feedback
-        if password:
-            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
-            if valid:
-                password_feedback.success(msg)
-            else:
-                password_feedback.error(msg)
-        
-        # Live length check
-        if generic_email_full:
-            local_part = generic_email_full.split('@')[0]
-            if len(local_part) > 20:
-                st.warning(f"❌ Generic Email exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
-            else:
-                st.success(f"✅ Generic Email meets the 20-character criteria ({len(local_part)} chars).")
-        
-        # Generate button
-        if st.button("🚀 Generate CSV"):
-            # Validate inputs
-            if not all([generic_email_full, display_name, staff_name, staff_email, password, ad_file]):
-                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
-                st.stop()
-
-            local_part = generic_email_full.split('@')[0]
-            if len(local_part) > 20:
-                st.error("❌ Generic Email still exceeds 20 characters. Please shorten it first.")
-                st.stop()
-
-            # Validate password
-            valid, msg = validate_password(password, generic_email_full, display_name, staff_email)
-            if not valid:
-                st.error(msg)
-                st.stop()
-
-            user_principal_name = local_part
-
-            # Read AD Excel
-            try:
-                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
-                ad_df.columns = [str(c).strip() for c in ad_df.columns]
-                st.success("✅ AD Excel loaded successfully!")
-            except Exception as e:
-                st.error(f"❌ Failed to read Excel: {e}")
-                st.stop()
-
-            # Check if Email Already Exists
-            email_col = None
-            for col in ad_df.columns:
-                if re.search(r"(mail|email|userprincipalname)", col, re.I):
-                    email_col = col
-                    break
-            if email_col is None:
-                st.error("❌ Could not find any email column in the AD file.")
-                st.stop()
-            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
-                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
-                st.stop()
-
-            # Lookup Staff Info
-            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
-            if staff_row.empty:
-                st.error(f"❌ Staff email not found in AD: {staff_email}")
-                st.stop()
-            staff_row = staff_row.iloc[0]
-
-            employee_id = staff_row.get("Employee ID", "")
-            department = staff_row.get("Department", "")
-            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
-            street_address = ""
-            if isinstance(office_full, str) and "-" in office_full:
-                street_address = office_full.split("-", 1)[1].strip()
-            mobile = staff_row.get("Telephone Number", "")
-
-            # Build Export Row
-            export_row = {
-                "givenName": '',
-                "sn": '',
-                "userPrincipalName": user_principal_name,
-                "displayName": display_name,
-                "description": f"Responsible party to the Generic Account is {staff_name} / {employee_id} / {department}",
-                "title": "",
-                "department": department,
-                "sAMAccountName": user_principal_name,
-                "physicalDeliveryOfficeName": office_full,
-                "streetAddress": street_address,
-                "telephoneNumber": mobile,
-                "name": display_name,
-                "mail": user_principal_name,
-                "company": "United Bank for Africa Plc",
-                "co": staff_row.get("Country", "Nigeria"),
-                "mobile": mobile,
-                "employeeID": '',
-                "OUName": "CN=Users,DC=ubagroup,DC=com",
-                "homeMDB": "CN=MDB35,CN=Databases,CN=Exchange Administrative Group (FYDIBOHF23SPDLT),CN=Administrative Groups,CN=UBAGROUP,CN=Microsoft Exchange,CN=Services,CN=Configuration,DC=ubagroup,DC=com",
-                "msExchOmaAdminWirelessEnable": "0",
-                "msExchHomeServerName": "/o=UBAGROUP/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Configuration/cn=Servers/cn=HQMBX01",
-                "memberOf": "UBAMicrosoftCloud;NG_Normal",
-                "pwdLastSet": "0",
-                "password": password
-            }
-
-            # Export CSV
-            export_df = pd.DataFrame([export_row])
-            st.success("✅ Export ready!")
-            st.download_button(
-                label="⬇️ Download CSV",
-                data=export_df.to_csv(index=False),
-                file_name="generic_email_export.csv",
-                mime="text/csv"
-            )
-
-            with st.expander("📋 Preview Export Table"):
-                st.dataframe(export_df)
-
-    elif "Service Email" in selected_tool:
-        st.markdown('<div class="tool-card"><h2>🔧 Service Email Creator</h2></div>', unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center; color:gray;'>Create and export service email accounts effortlessly</p>", unsafe_allow_html=True)
-        st.markdown("---")
-        
-        # Input fields
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            service_email_full = st.text_input("📧 Service Account Email (e.g., serviceaccounttest@ubagroup.com)").strip()
-            display_name = st.text_input("📝 SERVICE ACCOUNT NAME (e.g., service Test Mail)").strip()
-            staff_name = st.text_input("👤 Responsible Party (e.g., Emmanuel Imafidon)").strip()
-        
-        with col2:
-            staff_email = st.text_input("📧 Responsible Party's Email (e.g., emmanuel.imafidon@ubagroup.com)").strip()
-            password = st.text_input("🔒 Password for the Service Account", type="password").strip()
-            password_feedback = st.empty()
-            ad_file = st.file_uploader("📂 Upload Existing AD Excel file", type=["xlsx"])
-        
-        def validate_password(pw, service_email_full, display_name, staff_email):
-            if len(pw) < 10:
-                return False, "❌ Password must be at least 10 characters long."
-            if not pw[0].isupper():
-                return False, "❌ First letter must be capital."
-            if not all(c.islower() or c.isdigit() for c in pw[1:]):
-                return False, "❌ Remaining characters must be lowercase letters or numbers."
-            
-            # Check if password contains parts of any email or display name
-            lower_pw = pw.lower()
-            forbidden = re.findall(r'\w+', service_email_full) + re.findall(r'\w+', display_name) + re.findall(r'\w+', staff_email)
-            for word in forbidden:
-                if word.lower() in lower_pw:
-                    return False, f"❌ Password cannot contain '{word}'."
-            return True, "✅ Password meets all criteria."
-        
-        # Live feedback
-        if password:
-            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
-            if valid:
-                password_feedback.success(msg)
-            else:
-                password_feedback.error(msg)
-
-        # Live length check
-        if service_email_full:
-            local_part = service_email_full.split('@')[0]
-            if len(local_part) > 20:
-                st.warning(f"❌ Local part exceeds 20 characters ({len(local_part)}). Please shorten before proceeding.")
-            else:
-                st.success(f"✅ Service Account Email meets the 20-character criteria ({len(local_part)} chars).")
-        
-        # Generate button
-        if st.button("🚀 Generate CSV", key="service_generate"):
-            # Validate inputs
-            if not all([service_email_full, display_name, staff_name, staff_email, password, ad_file]):
-                st.warning("⚠️ Please fill all fields and upload the AD Excel file.")
-                st.stop()
-
-            local_part = service_email_full.split('@')[0]
-            if len(local_part) > 20:
-                st.error("❌ Service Account still exceeds 20 characters. Please shorten it first.")
-                st.stop()
-
-            # Validate password
-            valid, msg = validate_password(password, service_email_full, display_name, staff_email)
-            if not valid:
-                st.error(msg)
-                st.stop()
-
-            user_principal_name = local_part
-
-            # Read AD Excel
-            try:
-                ad_df = pd.read_excel(ad_file, sheet_name=1, skiprows=6)
-                ad_df.columns = [str(c).strip() for c in ad_df.columns]
-                st.success("✅ AD Excel loaded successfully!")
-            except Exception as e:
-                st.error(f"❌ Failed to read Excel: {e}")
-                st.stop()
-
-            # Check if Email Already Exists
-            email_col = None
-            for col in ad_df.columns:
-                if re.search(r"(mail|email|userprincipalname)", col, re.I):
-                    email_col = col
-                    break
-            if email_col is None:
-                st.error("❌ Could not find any email column in the AD file.")
-                st.stop()
-            if any(ad_df[email_col].str.lower() == f"{user_principal_name}@ubagroup.com".lower()):
-                st.error(f"❌ Cannot be created. Email already exists: {user_principal_name}@ubagroup.com")
-                st.stop()
-
-            # Lookup Staff Info
-            staff_row = ad_df[ad_df[email_col].str.lower() == staff_email.lower()]
-            if staff_row.empty:
-                st.error(f"❌ Staff email not found in AD: {staff_email}")
-                st.stop()
-            staff_row = staff_row.iloc[0]
-
-            employee_id = staff_row.get("Employee ID", "")
-            department = staff_row.get("Department", "")
-            office_full = staff_row.get("Office", staff_row.get("physicalDeliveryOfficeName", ""))
-            street_address = ""
-            if isinstance(office_full, str) and "-" in office_full:
-                street_address = office_full.split("-", 1)[1].strip()
-            mobile = staff_row.get("Telephone Number", "")
-
-            # Build Export Row
-            export_row = {
-                "givenName": '',
-                "sn": '',
-                "userPrincipalName": user_principal_name,
-                "displayName": display_name,
-                "description": f"Responsible party to the Service Account is {staff_name} / {employee_id} / {department}",
-                "title": "",
-                "department": department,
-                "sAMAccountName": user_principal_name,
-                "physicalDeliveryOfficeName": office_full,
-                "streetAddress": street_address,
-                "telephoneNumber": mobile,
-                "name": display_name,
-                "mail": user_principal_name,
-                "company": "United Bank for Africa Plc",
-                "co": staff_row.get("Country", "Nigeria"),
-                "mobile": mobile,
-                "employeeID": '',
-                "OUName": "CN=Users,DC=ubagroup,DC=com",
-                "homeMDB": "",
-                "msExchOmaAdminWirelessEnable": "0",
-                "msExchHomeServerName": "",
-                "memberOf": "UBAMicrosoftCloud;NG_Normal",
-                "pwdLastSet": "0",
-                "password": password
-            }
-
-            # Export CSV
-            export_df = pd.DataFrame([export_row])
-            st.success("✅ Export ready!")
-            st.download_button(
-                label="⬇️ Download CSV",
-                data=export_df.to_csv(index=False),
-                file_name="service_email_export.csv",
-                mime="text/csv"
-            )
-
-            with st.expander("📋 Preview Export Table"):
-                st.dataframe(export_df)
-
-    elif "Exit File" in selected_tool:
-        st.markdown('<div class="tool-card"><h2>📤 Exit File Converter</h2></div>', unsafe_allow_html=True)
-        st.write("Upload an Exit Portal Excel/CSV file and download it in the required template format.")
-        
-        uploaded_file = st.file_uploader("Upload Exit File", type=["xlsx", "xls", "csv"])
-        
-        if uploaded_file:
-            # Read file
-            if uploaded_file.name.lower().endswith(".csv"):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file)
-            
-            # Pre-process Mobile Phone
-            if "Mobile Phone" in df.columns:
-                df["Mobile Phone"] = (
-                    pd.to_numeric(df["Mobile Phone"], errors="coerce")
-                    .astype("Int64")
-                    .astype(str)
-                    .replace("<NA>", "")
-                    .str.replace(r"\.0$", "", regex=True)
-                    .str.strip()
-                )
-            
-            # Column Mapping
-            mapping = {
-                "Employee ID": "EmployeeNumber",
-                "Full Name": "EmployeeName",
-                "Gender": "Gender",
-                "Grade": "JobGrade",
-                "Job Role": "JobRole",
-                "Directorate": "Directorate",
-                "Date Of Employment": "DateofEmployment",
-                "Effective Date": "EffectiveDate",
-                "Mobile Phone": "MobilePhone",
-                "Sub-reason": "ReasonForLeaving1",
-                "Reason for Leaving": "OtherReasonForLeaving",
-                "Work Address SolId": "SolID",
-            }
-            
-            # Apply mapping
-            df = df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
-            
-            # Required Columns Order
-            required_cols = [
-                "EmployeeNumber",
-                "EmployeeName",
-                "Gender",
-                "JobGrade",
-                "JobRole",
-                "Directorate",
-                "DateofEmployment",
-                "EffectiveDate",
-                "InitiationDate",
-                "MobilePhone",
-                "ReasonForLeaving1",
-                "OtherReasonForLeaving",
-                "SolID",
-                "DateOfDeactivation",
-            ]
-            
-            # Initialize output dataframe
-            output_df = pd.DataFrame(columns=required_cols)
-            
-            for col in required_cols:
-                if col in df.columns:
-                    output_df[col] = df[col]
-                else:
-                    output_df[col] = ""
-            
-            # Derived / Cleaned Columns
-            output_df["InitiationDate"] = output_df["EffectiveDate"]
-            output_df["DateOfDeactivation"] = output_df["EffectiveDate"]
-            
-            # Clean SolID column
-            if "SolID" in output_df.columns:
-                output_df["SolID"] = output_df["SolID"].apply(clean_solid)
-            
-            # Download
-            output_file = "converted_exit_file.xlsx"
-            with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
-                output_df.to_excel(writer, index=False, sheet_name="ExitData")
-            
-            with open(output_file, "rb") as f:
-                st.download_button(
-                    label="📥 Download Converted File",
-                    data=f,
-                    file_name=output_file,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
-            
-            st.success("✅ File converted successfully!")
-            
-            # Preview
-            with st.expander("📋 Preview Converted Data"):
-                st.dataframe(output_df)
 
     # Footer
     st.markdown("""
